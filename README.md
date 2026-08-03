@@ -1,86 +1,42 @@
-# Alternance Finder 🔍💼
+# Alternance Finder
 
-Alternance Finder is a modern, cross-platform desktop application designed to automate and streamline your job search. Built with Rust, Tauri, and React, it crawls leading job boards, processes PDF CVs to score listing compatibility, and handles local application tracking.
+Alternance Finder is a desktop application for job search automation. It is built with Rust, Tauri, and React. It scrapes job boards, extracts text from PDF CVs to calculate skill compatibility scores, and tracks applications locally.
 
----
+## Features
 
-## 🌟 Key Features
+- **Web Scraper**: Scrapes Welcome to the Jungle, HelloWork, Jobijoba, LinkedIn, and Indeed using scrapers written in Rust.
+- **CV Parser**: Extracts text from PDF resumes using the `pdf-extract` library.
+- **Skill Matcher**: Compares CV text with job descriptions to compute compatibility scores.
+- **Database**: Stores configurations, job offers, and application states in a local SQLite database.
+- **Background Loop**: Monitors job listings and triggers alerts when new matches occur.
+- **Email Drafts**: Creates email templates in macOS Mail using AppleScript.
 
-- **Multi-Platform Scraper**: Crawls Welcome to the Jungle, HelloWork, Jobijoba, LinkedIn, and Indeed using high-performance Rust web scrapers.
-- **ATS CV Parser**: Extracts skills from your PDF resume using Rust's `pdf-extract` library.
-- **Smart Skill Matching**: Compares CV skills with job descriptions to compute compatibility scores and rank opportunities.
-- **Local SQLite Database**: Stores search configurations, historical job offers, and application states on your machine.
-- **Background Automation**: Periodically monitors job listings while the application runs and alerts you when new offers match your criteria.
-- **macOS Mail Integration**: Drafts formatted email summaries of target job opportunities in the macOS Mail client via AppleScript.
+## Tech Stack
 
----
+- **Framework**: Tauri v2
+- **Frontend**: React 19, Vite, CSS
+- **Database**: SQLite (via `rusqlite`)
+- **HTTP Client**: `reqwest`
+- **HTML Parser**: `scraper`
+- **PDF Reader**: `pdf-extract`
+- **Scripting**: AppleScript
 
-## 🛠️ Tech Stack
-
-- **Desktop Shell**: [Tauri v2](https://tauri.app/) (Rust)
-- **Frontend**: [React 19](https://react.dev/), [Vite](https://vite.dev/), custom styling (CSS)
-- **Database**: [SQLite](https://www.sqlite.org/) (managed via `rusqlite`)
-- **Scraping Engine**: Rust (`reqwest` & `scraper`)
-- **PDF Extraction**: Rust (`pdf-extract`)
-- **OS Automation**: AppleScript / `osascript` (macOS native)
-
----
-
-## 🚀 Getting Started
+## Installation & Development
 
 ### Prerequisites
 
-To run or build this application, you must install:
+- Node.js
+- Rust
 
-1. [Node.js](https://nodejs.org/) (v18 or higher recommended)
-2. [Rust / Cargo toolchain](https://www.rust-lang.org/tools/install)
-
-### Installation & Development
-
-Clone the repository and install the dependencies:
+### Steps
 
 ```bash
-# Clone the repository
-git clone https://github.com/igorluna/alternance-finder.git
-cd alternance-finder
-
-# Install frontend dependencies
 npm install
-
-# Run the application in development mode
 npm run tauri dev
 ```
 
-### Production Build
-
-Create a standalone executable for your operating system:
+### Build
 
 ```bash
-# Build the production executable
 npm run tauri build
 ```
-
----
-
-## 📁 Project Structure
-
-```text
-├── src/                  # React Frontend
-│   ├── assets/           # Frontend assets
-│   ├── main.jsx          # UI layout and Tauri command invocations
-│   └── styles.css        # Custom CSS styling
-├── src-tauri/            # Tauri Rust Backend
-│   ├── src/
-│   │   ├── main.rs       # Application entry point
-│   │   ├── lib.rs        # Tauri setup, command handlers, and background loop
-│   │   └── scrapers.rs   # Core scraper logic and platform crawlers
-│   ├── Cargo.toml        # Rust dependencies (rusqlite, pdf-extract, reqwest, etc.)
-│   └── tauri.conf.json   # Tauri application configuration
-└── package.json          # Node.js workspace dependencies and scripts
-```
-
----
-
-## 📝 License
-
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
