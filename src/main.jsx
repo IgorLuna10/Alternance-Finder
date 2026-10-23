@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import "./styles.css";
 
 function App() {
   const [keywordInput, setKeywordInput] = useState("");
@@ -36,6 +37,7 @@ function App() {
   const [cvUploadLoading, setCvUploadLoading] = useState(false);
   const [sortBy, setSortBy] = useState("date");
   const [newSkillInput, setNewSkillInput] = useState("");
+  const [hideZeroMatches, setHideZeroMatches] = useState(false);
 
   useEffect(() => {
     localStorage.setItem("cvSkills", JSON.stringify(cvSkills));
@@ -216,6 +218,16 @@ function App() {
     }
   };
 
+  const handleDeleteJob = async (url) => {
+    try {
+      await invoke("delete_job", { url });
+      setJobs(prevJobs => prevJobs.filter(job => job.url !== url));
+    } catch (error) {
+      console.error("Failed to delete job offer:", error);
+      setStatusMessage(`Error: ${error}`);
+    }
+  };
+
   const sendEmail = (job) => {
     const subject = encodeURIComponent(`Job Opportunity: ${job.title} at ${job.company}`);
     const body = encodeURIComponent(`Hi,\n\nI found this job opportunity for you:\n\nTitle: ${job.title}\nCompany: ${job.company}\nLocation: ${job.location}\nSource: ${job.source}\nURL: ${job.url}\n\nGood luck!`);
@@ -231,52 +243,30 @@ function App() {
     setStatusMessage("Extracting skills from CV...");
 
     try {
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        try {
-          const arrayBuffer = event.target.result;
-          const uint8Array = new Uint8Array(arrayBuffer);
-          const bytes = Array.from(uint8Array);
-          
-          const extractedSkills = await invoke("parse_cv_bytes", { bytes });
-          setCvSkills(extractedSkills);
-          
-          if (extractedSkills.length > 0) {
-            setStatusMessage(`CV Parsed! Found ${extractedSkills.length} skills. Added to CV Profile.`);
-          } else {
-            setStatusMessage("CV Parsed, but no matching skills were found. You can add them manually.");
-          }
-        } catch (error) {
-          console.error("Failed to parse CV bytes:", error);
-          setStatusMessage(`Error parsing CV: ${error}`);
-        } finally {
-          setCvUploadLoading(false);
-        }
-      };
-      reader.onerror = () => {
-        setStatusMessage("Error reading file.");
-        setCvUploadLoading(false);
-      };
-      reader.readAsArrayBuffer(file);
+      const arrayBuffer = await file.arrayBuffer();
+      const bytes = Array.from(new Uint8Array(arrayBuffer));
+      const extractedSkills = await invoke("parse_cv_bytes", { bytes });
+      
+      setCvSkills(extractedSkills);
+      if (extractedSkills.length > 0) {
+        setStatusMessage(`CV Parsed! Found ${extractedSkills.length} skills. Added to CV Profile.`);
+      } else {
+        setStatusMessage("CV Parsed, but no matching skills were found. You can add them manually.");
+      }
     } catch (error) {
-      console.error("Error reading file:", error);
-      setStatusMessage(`Error: ${error}`);
+      console.error("Error parsing CV:", error);
+      setStatusMessage("Failed to parse CV. Ensure it contains readable text.");
+    } finally {
       setCvUploadLoading(false);
     }
   };
 
-  const handleSyncKeywords = () => {
+  const handleSyncSkillsToKeywords = () => {
     if (cvSkills.length === 0) {
-      setStatusMessage("No CV skills to sync yet. Please upload a CV first.");
+      setStatusMessage("No CV skills to sync. Upload a CV first!");
       return;
     }
-    const newKeywords = [...keywords];
-    cvSkills.forEach(skill => {
-      const kw = skill.toLowerCase();
-      if (!newKeywords.includes(kw)) {
-        newKeywords.push(kw);
-      }
-    });
+    const newKeywords = Array.from(new Set([...keywords, ...cvSkills]));
     setKeywords(newKeywords);
     setStatusMessage("Search keywords updated from your CV skills!");
   };
@@ -296,49 +286,116 @@ function App() {
     setCvSkills(cvSkills.filter(s => s !== skillToRemove));
   };
 
-  const calculateMatchScore = (jobTitle, companyName) => {
-    if (!cvSkills || cvSkills.length === 0) return { score: 0, matching: [] };
-    const textToSearch = `${jobTitle} ${companyName}`.toLowerCase();
+  const escapeRegExp = (string) => {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  };
+
+  const matchesWholeWordOrPhrase = (text, term) => {
+    if (!term || !text) return false;
+    const cleanTerm = term.toLowerCase().trim();
+    if (!cleanTerm) return false;
     
+    const escaped = escapeRegExp(cleanTerm);
+    // Matches as whole word, respecting symbols like C++ or C#
+    const regex = new RegExp(`(?:^|[^a-z0-9+#])${escaped}(?:$|[^a-z0-9+#])`, 'i');
+    return regex.test(text);
+  };
+
+  const calculateMatchScore = (jobTitle, companyName) => {
+    if (!jobTitle) return { score: 0, matching: [] };
+    const textToSearch = `${jobTitle} ${companyName}`.toLowerCase();
     const matching = [];
-    cvSkills.forEach(skill => {
-      const skillLower = skill.toLowerCase();
-      if (skillLower === "node.js" || skillLower === "nodejs" || skillLower === "node") {
-        if (textToSearch.includes("node")) {
-          matching.push(skill);
+
+    // 1. Match against user's CV Skills / Roles with word boundary check
+    if (cvSkills && cvSkills.length > 0) {
+      cvSkills.forEach(skill => {
+        const skillLower = skill.toLowerCase().trim();
+        if (!skillLower) return;
+
+        if (skillLower === "node.js" || skillLower === "nodejs" || skillLower === "node") {
+          if (matchesWholeWordOrPhrase(textToSearch, "node") || matchesWholeWordOrPhrase(textToSearch, "nodejs") || matchesWholeWordOrPhrase(textToSearch, "node.js")) {
+            matching.push(skill);
+          }
+        } else if (skillLower === "fullstack" || skillLower === "full stack") {
+          if (textToSearch.includes("fullstack") || textToSearch.includes("full stack")) {
+            matching.push(skill);
+          }
+        } else {
+          if (matchesWholeWordOrPhrase(textToSearch, skillLower)) {
+            matching.push(skill);
+          }
         }
-      } else if (skillLower === "cybersecurite" || skillLower === "cybersecurity") {
-        if (textToSearch.includes("cyber") || textToSearch.includes("securi") || textToSearch.includes("sécuri")) {
-          matching.push(skill);
-        }
-      } else if (skillLower === "fullstack" || skillLower === "full stack") {
-        if (textToSearch.includes("full") || textToSearch.includes("stack") || textToSearch.includes("polyvalent")) {
-          matching.push(skill);
-        }
-      } else {
-        if (textToSearch.includes(skillLower)) {
-          matching.push(skill);
-        }
+      });
+    }
+
+    // 2. Match against active search keywords (excluding generic French stop words & contract terms)
+    let keywordMatches = [];
+    const genericTerms = ["alternance", "stage", "cdd", "cdi", "emploi", "job", "de", "en", "h/f", "f/h", "à", "dans", "le", "la", "les"];
+    keywords.forEach(kw => {
+      const kwLower = kw.toLowerCase().trim();
+      if (kwLower && !genericTerms.includes(kwLower) && matchesWholeWordOrPhrase(textToSearch, kwLower)) {
+        keywordMatches.push(kw);
       }
     });
 
-    if (matching.length === 0) return { score: 0, matching: [] };
+    // Combine unique matching items
+    const allMatches = Array.from(new Set([...matching, ...keywordMatches]));
+
+    // If there are no matches with either CV skills or search keywords, score is 0
+    if (allMatches.length === 0) {
+      return { score: 0, matching: [] };
+    }
+
+    // Calculate score based on degree of match
+    const baseScore = 50;
+    const bonusPerMatch = 20;
+    const score = Math.min(100, baseScore + (allMatches.length - 1) * bonusPerMatch);
     
-    const score = Math.min(100, 40 + (matching.length - 1) * 30);
-    return { score, matching };
+    return { score, matching: allMatches };
+  };
+
+  const isMatchingContractType = (title, currentContractType) => {
+    if (!currentContractType || currentContractType === "all") return true;
+    const titleLower = (title || "").toLowerCase();
+    
+    const isAlternanceTitle = titleLower.includes("alternan") || 
+      titleLower.includes("apprenti") || 
+      titleLower.includes("contrat pro") || 
+      titleLower.includes("professionnalisation");
+      
+    const isExplicitFulltime = (titleLower.includes("cdi") || 
+      titleLower.includes("cdd") || 
+      titleLower.includes("full-time") || 
+      titleLower.includes("fulltime") || 
+      titleLower.includes("temps plein")) && !isAlternanceTitle;
+      
+    if (currentContractType === "alternance") {
+      if (isExplicitFulltime) return false;
+      return true;
+    } else if (currentContractType === "fulltime") {
+      if (isAlternanceTitle || titleLower.includes("stage") || titleLower.includes("internship")) return false;
+      return true;
+    }
+    return true;
   };
 
   const getSortedAndScoredJobs = () => {
-    const jobsWithScores = jobs.map(job => {
-      const { score, matching } = calculateMatchScore(job.title, job.company);
-      return { ...job, matchScore: score, matchingSkills: matching };
-    });
+    let list = jobs
+      .filter(job => isMatchingContractType(job.title, contractType))
+      .map(job => {
+        const { score, matching } = calculateMatchScore(job.title, job.company);
+        return { ...job, matchScore: score, matchingSkills: matching };
+      });
+
+    if (hideZeroMatches) {
+      list = list.filter(j => j.matchScore > 0);
+    }
 
     if (sortBy === "match") {
-      return [...jobsWithScores].sort((a, b) => b.matchScore - a.matchScore);
+      return [...list].sort((a, b) => b.matchScore - a.matchScore);
     }
     
-    return jobsWithScores;
+    return list;
   };
 
   const handleViewOffer = async (url) => {
@@ -353,7 +410,7 @@ function App() {
   return (
     <div className="app-container">
       <header className="app-header">
-        <h1>Alternance Finder</h1>
+        <h1>Alternance Finder <span style={{ fontSize: "0.8rem", padding: "0.2rem 0.5rem", borderRadius: "12px", background: "rgba(99, 102, 241, 0.2)", color: "#818cf8", verticalAlign: "middle", marginLeft: "0.5rem" }}>v1.0.0</span></h1>
         <p>Automate your job search with ease.</p>
       </header>
 
@@ -424,7 +481,7 @@ function App() {
                     className="input-add-skill"
                   />
                 </div>
-                <button onClick={handleSyncKeywords} className="btn-sync-keywords">
+                <button onClick={handleSyncSkillsToKeywords} className="btn-sync-keywords">
                   Sync to Search Keywords
                 </button>
               </div>
@@ -487,38 +544,51 @@ function App() {
 
         <section className="feed-panel">
           <div className="feed-header">
-            <h2>Found Offers ({jobs.length})</h2>
+            <div className="feed-header-title">
+              <h2>Found Offers ({getSortedAndScoredJobs().length}{hideZeroMatches && jobs.length !== getSortedAndScoredJobs().length ? ` of ${jobs.length}` : ""})</h2>
+            </div>
             
-            {cvSkills.length > 0 && (
-              <div className="sort-controls">
-                <span className="sort-label">Sort by:</span>
-                <select 
-                  value={sortBy} 
-                  onChange={(e) => setSortBy(e.target.value)} 
-                  className="sort-select"
-                >
-                  <option value="date">Date Added</option>
-                  <option value="match">Match Score</option>
-                </select>
-              </div>
-            )}
-
             {jobs.length > 0 && (
-              <div className="feed-actions">
-                <button onClick={handleShareAllOffers} className="btn-share-all" disabled={loading}>
-                  Share All via Email
-                </button>
-                {showConfirmClear ? (
-                  <div className="clear-confirm-group">
-                    <span className="confirm-text">Confirm clear?</span>
-                    <button onClick={handleClearOffers} className="btn-clear-confirm-yes">Yes</button>
-                    <button onClick={() => setShowConfirmClear(false)} className="btn-clear-confirm-no">No</button>
+              <div className="feed-header-toolbar">
+                <div className="sort-controls">
+                  <label className="filter-checkbox-label">
+                    <input 
+                      type="checkbox" 
+                      checked={hideZeroMatches} 
+                      onChange={(e) => setHideZeroMatches(e.target.checked)} 
+                    />
+                    <span>Hide 0% Matches</span>
+                  </label>
+
+                  <div className="sort-group">
+                    <span className="sort-label">Sort:</span>
+                    <select 
+                      value={sortBy} 
+                      onChange={(e) => setSortBy(e.target.value)} 
+                      className="sort-select"
+                    >
+                      <option value="match">Match Score</option>
+                      <option value="date">Date Added</option>
+                    </select>
                   </div>
-                ) : (
-                  <button onClick={() => setShowConfirmClear(true)} className="btn-clear">
-                    Clear Offers
+                </div>
+
+                <div className="feed-actions">
+                  <button onClick={handleShareAllOffers} className="btn-share-all" disabled={loading}>
+                    Share All via Email
                   </button>
-                )}
+                  {showConfirmClear ? (
+                    <div className="clear-confirm-group">
+                      <span className="confirm-text">Confirm clear?</span>
+                      <button onClick={handleClearOffers} className="btn-clear-confirm-yes">Yes</button>
+                      <button onClick={() => setShowConfirmClear(false)} className="btn-clear-confirm-no">No</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setShowConfirmClear(true)} className="btn-clear">
+                      Clear Offers
+                    </button>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -562,6 +632,9 @@ function App() {
                         <button onClick={() => sendEmail(job)} className="btn-email">
                           Share via Email
                         </button>
+                        <button onClick={() => handleDeleteJob(job.url)} className="btn-delete">
+                          Erase
+                        </button>
                         <button onClick={() => handleViewOffer(job.url)} className="btn-apply">
                           View Offer
                         </button>
@@ -578,6 +651,43 @@ function App() {
   );
 }
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("ErrorBoundary caught an error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: "2rem", color: "#f87171", fontFamily: "sans-serif" }}>
+          <h2>Application Error</h2>
+          <p>Alternance Finder v1.0.0 encountered an error:</p>
+          <pre style={{ background: "#1e1e1e", color: "#f87171", padding: "1rem", borderRadius: "8px", overflow: "auto" }}>
+            {this.state.error?.toString()}
+          </pre>
+          <button onClick={() => window.location.reload()} style={{ padding: "0.5rem 1rem", marginTop: "1rem", cursor: "pointer", borderRadius: "6px", background: "#6366f1", color: "#fff", border: "none" }}>
+            Reload App
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const container = document.getElementById("root");
 const root = createRoot(container);
-root.render(<App />);
+root.render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>
+);

@@ -138,24 +138,30 @@ fn clear_all_jobs(state: tauri::State<'_, AppState>) -> Result<(), String> {
     Ok(())
 }
 
-// 6. Command to open a URL in the system default web browser
 #[tauri::command]
 fn open_in_browser(url: String) -> Result<(), String> {
     println!("Tauri backend: opening URL in browser: {}", url);
     
     #[cfg(target_os = "macos")]
-    let cmd = std::process::Command::new("open").arg(&url).spawn();
+    {
+        std::process::Command::new("open").arg(&url).spawn().map(|_| ()).map_err(|e| e.to_string())
+    }
 
     #[cfg(target_os = "windows")]
-    let cmd = std::process::Command::new("cmd").args(["/C", "start", &url]).spawn();
+    {
+        std::process::Command::new("cmd").args(["/C", "start", &url]).spawn().map(|_| ()).map_err(|e| e.to_string())
+    }
 
     #[cfg(target_os = "linux")]
-    let cmd = std::process::Command::new("xdg-open").arg(&url).spawn();
+    {
+        std::process::Command::new("xdg-open").arg(&url).spawn().map(|_| ()).map_err(|e| e.to_string())
+    }
 
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-    let cmd = Err(std::io::Error::new(std::io::ErrorKind::Other, "Unsupported OS"));
-
-    cmd.map(|_| ()).map_err(|e| e.to_string())
+    {
+        let _ = url;
+        Err("Unsupported OS".to_string())
+    }
 }
 
 // 7. Commands to manage SQLite Settings
@@ -248,6 +254,24 @@ fn draft_all_offers(state: tauri::State<'_, AppState>, recipient: String) -> Res
     body.push_str("Good luck!");
 
     create_mail_draft(&recipient, &subject, &body)
+}
+
+#[tauri::command]
+fn delete_job(state: tauri::State<'_, AppState>, url: String) -> Result<(), String> {
+    println!("Tauri backend: delete_job command called for url: {}", url);
+    let conn = state.db.lock().unwrap();
+    conn.execute("DELETE FROM jobs WHERE url = ?1", (&url,))
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn delete_jobs_by_urls(state: tauri::State<'_, AppState>, urls: Vec<String>) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    for url in urls {
+        let _ = conn.execute("DELETE FROM jobs WHERE url = ?1", (&url,));
+    }
+    Ok(())
 }
 
 // Helper to create Apple Mail draft on macOS
@@ -412,61 +436,77 @@ fn parse_cv_bytes(bytes: Vec<u8>) -> Result<Vec<String>, String> {
         .replace('\t', " ");
     
     let skills_mapping = vec![
+        // Tech & Software
         ("react", "React"),
         ("nextjs", "Next.js"),
         ("next.js", "Next.js"),
-        ("nestjs", "NestJS"),
-        ("nest.js", "NestJS"),
-        ("vuejs", "Vue.js"),
         ("vue", "Vue.js"),
         ("angular", "Angular"),
-        ("svelte", "Svelte"),
         ("javascript", "JavaScript"),
         ("typescript", "TypeScript"),
-        ("nodejs", "Node.js"),
-        ("node.js", "Node.js"),
         ("node", "Node.js"),
         ("python", "Python"),
         ("rust", "Rust"),
         ("docker", "Docker"),
         ("kubernetes", "Kubernetes"),
-        ("k8s", "Kubernetes"),
-        ("mlops", "MLOps"),
-        ("machine learning", "Machine Learning"),
-        ("deep learning", "Deep Learning"),
-        ("pytorch", "PyTorch"),
-        ("tensorflow", "TensorFlow"),
         ("aws", "AWS"),
         ("gcp", "Google Cloud"),
-        ("google cloud", "Google Cloud"),
         ("azure", "Azure"),
+        ("sql", "SQL"),
         ("postgres", "PostgreSQL"),
-        ("postgresql", "PostgreSQL"),
-        ("mysql", "MySQL"),
-        ("sqlite", "SQLite"),
         ("mongodb", "MongoDB"),
-        ("redis", "Redis"),
-        ("cybersecurite", "Cybersécurité"),
-        ("cybersecurity", "Cybersécurité"),
         ("devops", "DevOps"),
-        ("ci/cd", "CI/CD"),
         ("git", "Git"),
         ("c++", "C++"),
-        ("c#", "C#"),
         ("java", "Java"),
         ("php", "PHP"),
-        ("laravel", "Laravel"),
-        ("symfony", "Symfony"),
-        ("django", "Django"),
-        ("flask", "Flask"),
-        ("fastapi", "FastAPI"),
-        ("backend", "Backend"),
-        ("frontend", "Frontend"),
-        ("fullstack", "Fullstack"),
-        ("full stack", "Fullstack"),
-        ("data engineer", "Data Engineering"),
-        ("data science", "Data Science"),
-        ("data scientist", "Data Science"),
+        ("backend", "Backend Developer"),
+        ("frontend", "Frontend Developer"),
+        ("fullstack", "Fullstack Developer"),
+        ("full stack", "Fullstack Developer"),
+        ("développeur", "Développeur"),
+        ("developpeur", "Développeur"),
+        ("software engineer", "Software Engineer"),
+        ("data", "Data Analyst"),
+        ("cybersecurite", "Cybersécurité"),
+        
+        // Sales & Business Development
+        ("commercial", "Commercial"),
+        ("business developer", "Business Developer"),
+        ("business development", "Business Development"),
+        ("account manager", "Account Manager"),
+        ("account executive", "Account Executive"),
+        ("sales", "Sales"),
+        ("prospection", "Prospection"),
+        ("négociation", "Négociation"),
+        ("negociation", "Négociation"),
+        ("crm", "CRM"),
+        ("hubspot", "HubSpot"),
+        ("salesforce", "Salesforce"),
+        
+        // Marketing & Communication
+        ("marketing", "Marketing"),
+        ("growth", "Growth Hacking"),
+        ("community manager", "Community Manager"),
+        ("seo", "SEO"),
+        ("sem", "SEM"),
+        ("communication", "Communication"),
+        
+        // Design & Product
+        ("ux", "UX Design"),
+        ("ui", "UI Design"),
+        ("figma", "Figma"),
+        ("product manager", "Product Manager"),
+        ("product owner", "Product Owner"),
+        
+        // Finance & Management
+        ("comptabilité", "Comptabilité"),
+        ("comptable", "Comptable"),
+        ("finance", "Finance"),
+        ("gestion", "Gestion de Projet"),
+        ("management", "Management"),
+        ("ressources humaines", "Ressources Humaines"),
+        ("recrutement", "Recrutement")
     ];
     
     let mut found_skills = std::collections::BTreeSet::new();
@@ -507,7 +547,9 @@ pub fn run() {
             get_settings,
             save_settings,
             draft_all_offers,
-            parse_cv_bytes
+            parse_cv_bytes,
+            delete_job,
+            delete_jobs_by_urls
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

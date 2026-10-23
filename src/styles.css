@@ -59,6 +59,25 @@ body {
   position: sticky;
   top: 2rem;
   align-self: start;
+  max-height: calc(100vh - 4rem);
+  overflow-y: auto;
+  padding-right: 1.5rem;
+}
+
+/* Premium scrollbar styling for the controls panel */
+.controls-panel::-webkit-scrollbar {
+  width: 6px;
+}
+.controls-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+.controls-panel::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+  transition: background 0.2s;
+}
+.controls-panel::-webkit-scrollbar-thumb:hover {
+  background: var(--brand-color);
 }
 
 h2 {
@@ -291,11 +310,22 @@ h2 {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
   margin-bottom: 1.5rem;
 }
 
+.feed-header-title h2,
 .feed-header h2 {
   margin: 0;
+  white-space: nowrap;
+}
+
+.feed-header-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1.5rem;
 }
 
 .btn-clear {
@@ -680,13 +710,19 @@ input:checked + .slider:before {
   border-radius: 4px;
 }
 
-/* Sort Controls in Feed Panel */
+/* Sort & Filter Controls in Feed Panel */
 .sort-controls {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  margin-right: auto;
-  margin-left: 1.5rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.sort-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  white-space: nowrap;
 }
 
 .sort-label {
@@ -698,13 +734,48 @@ input:checked + .slider:before {
   background: var(--input-bg);
   color: var(--text-main);
   border: 1px solid var(--border-color);
-  padding: 0.3rem 0.6rem;
+  padding: 0.35rem 0.65rem;
   border-radius: 6px;
   font-size: 0.85rem;
   outline: none;
   cursor: pointer;
+  transition: border-color 0.2s;
 }
 
 .sort-select:focus {
   border-color: var(--brand-color);
+}
+
+.btn-delete {
+  background: transparent;
+  color: #ff4444;
+  border: 1px solid #ff4444;
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.btn-delete:hover {
+  background: rgba(255, 68, 68, 0.1);
+}
+
+.filter-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  color: var(--text-main);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.filter-checkbox-label input[type="checkbox"] {
+  accent-color: var(--brand-color);
+  cursor: pointer;
+  width: 15px;
+  height: 15px;
 }

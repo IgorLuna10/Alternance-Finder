@@ -186,15 +186,21 @@ pub async fn scrape_wttj(keywords: &[String], location: &str, max_age: i32, cont
         .as_secs() as i64;
 
     for kw in keywords {
+        let effective_kw = if contract_type == "alternance" && !kw.to_lowercase().contains("alternan") && !kw.to_lowercase().contains("apprenti") {
+            format!("{} alternance", kw)
+        } else {
+            kw.clone()
+        };
+
         let mut payload = serde_json::json!({
-            "query": kw,
+            "query": effective_kw,
             "hitsPerPage": 20,
             "aroundLatLng": "48.8566,2.3522",
             "aroundRadius": 30000
         });
         
         if contract_type == "alternance" {
-            payload.as_object_mut().unwrap().insert("filters".to_string(), serde_json::Value::String("contract_type:apprenticeship".to_string()));
+            payload.as_object_mut().unwrap().insert("filters".to_string(), serde_json::Value::String("contract_type:apprenticeship OR contract_type:professionnalisation".to_string()));
         } else if contract_type == "fulltime" {
             payload.as_object_mut().unwrap().insert("filters".to_string(), serde_json::Value::String("contract_type:full_time OR contract_type:temporary".to_string()));
         }
@@ -301,6 +307,12 @@ pub async fn scrape_hellowork(keywords: &[String], location: &str, max_age: i32,
         .unwrap_or_default();
 
     for kw in keywords {
+        let effective_kw = if contract_type == "alternance" && !kw.to_lowercase().contains("alternan") && !kw.to_lowercase().contains("apprenti") {
+            format!("{} alternance", kw)
+        } else {
+            kw.clone()
+        };
+
         let contract_param = if contract_type == "alternance" {
             "&c=Alternance"
         } else if contract_type == "fulltime" {
@@ -310,7 +322,7 @@ pub async fn scrape_hellowork(keywords: &[String], location: &str, max_age: i32,
         };
         let url = format!(
             "https://www.hellowork.com/fr-fr/emploi/recherche.html?k={}&l={}&d={}j{}",
-            urlencoding::encode(kw),
+            urlencoding::encode(&effective_kw),
             urlencoding::encode(location),
             max_age,
             contract_param
@@ -400,12 +412,18 @@ pub async fn scrape_jobijoba(keywords: &[String], location: &str, max_age: i32, 
         .unwrap_or_default();
 
     for kw in keywords {
+        let effective_kw = if contract_type == "alternance" && !kw.to_lowercase().contains("alternan") && !kw.to_lowercase().contains("apprenti") {
+            format!("{} alternance", kw)
+        } else {
+            kw.clone()
+        };
+
         let path = if contract_type == "alternance" {
             "alternance"
         } else {
             "emploi"
         };
-        let slug = kw.replace(' ', "+");
+        let slug = effective_kw.replace(' ', "+");
         let url = format!(
             "https://www.jobijoba.com/fr/{}/{}/{}",
             path,
@@ -514,6 +532,12 @@ pub async fn scrape_linkedin(keywords: &[String], location: &str, max_age: i32, 
         .unwrap_or_default();
 
     for kw in keywords {
+        let effective_kw = if contract_type == "alternance" && !kw.to_lowercase().contains("alternan") && !kw.to_lowercase().contains("apprenti") {
+            format!("{} alternance", kw)
+        } else {
+            kw.clone()
+        };
+
         let contract_param = if contract_type == "alternance" {
             "&f_JT=I"
         } else if contract_type == "fulltime" {
@@ -523,7 +547,7 @@ pub async fn scrape_linkedin(keywords: &[String], location: &str, max_age: i32, 
         };
         let url = format!(
             "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={}&location={}{}&start=0",
-            urlencoding::encode(kw),
+            urlencoding::encode(&effective_kw),
             urlencoding::encode(location),
             contract_param
         );
@@ -627,6 +651,12 @@ pub async fn scrape_indeed(keywords: &[String], location: &str, max_age: i32, co
         .unwrap_or_default();
 
     for kw in keywords {
+        let effective_kw = if contract_type == "alternance" && !kw.to_lowercase().contains("alternan") && !kw.to_lowercase().contains("apprenti") {
+            format!("{} alternance", kw)
+        } else {
+            kw.clone()
+        };
+
         let contract_param = if contract_type == "alternance" {
             "&jt=internship"
         } else if contract_type == "fulltime" {
@@ -636,7 +666,7 @@ pub async fn scrape_indeed(keywords: &[String], location: &str, max_age: i32, co
         };
         let url = format!(
             "https://fr.indeed.com/jobs?q={}&l={}{}",
-            urlencoding::encode(kw),
+            urlencoding::encode(&effective_kw),
             urlencoding::encode(location),
             contract_param
         );
@@ -800,12 +830,71 @@ pub async fn scrape_all(keywords_str: &str, location: &str, max_age: i32, contra
         all_jobs.extend(jobs);
     }
 
+    // Deduplicate jobs by URL and title before returning, and enforce contract matching
+    let mut seen_urls = std::collections::HashSet::new();
+    all_jobs.retain(|job| {
+        if job.url.is_empty() || job.title.is_empty() {
+            return false;
+        }
+        if !is_matching_contract_type(&job.title, contract_type) {
+            return false;
+        }
+        seen_urls.insert(job.url.clone())
+    });
+
     all_jobs
+}
+
+pub fn is_matching_contract_type(title: &str, contract_type: &str) -> bool {
+    if contract_type == "all" || contract_type.is_empty() {
+        return true;
+    }
+
+    let title_lower = title.to_lowercase();
+    
+    let is_alternance_title = title_lower.contains("alternan")
+        || title_lower.contains("apprenti")
+        || title_lower.contains("contrat pro")
+        || title_lower.contains("professionnalisation");
+
+    let is_explicit_fulltime = (title_lower.contains("cdi")
+        || title_lower.contains("cdd")
+        || title_lower.contains("full-time")
+        || title_lower.contains("fulltime")
+        || title_lower.contains("temps plein"))
+        && !is_alternance_title;
+
+    if contract_type == "alternance" {
+        if is_explicit_fulltime {
+            return false;
+        }
+        return true;
+    } else if contract_type == "fulltime" {
+        if is_alternance_title || title_lower.contains("stage") || title_lower.contains("internship") {
+            return false;
+        }
+        return true;
+    }
+
+    true
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_is_matching_contract_type() {
+        assert!(is_matching_contract_type("Développeur Front-End en Alternance (H/F)", "alternance"));
+        assert!(is_matching_contract_type("Apprenti Développeur Python", "alternance"));
+        assert!(is_matching_contract_type("Alternance - Développeur Web", "alternance"));
+        assert!(!is_matching_contract_type("Développeur Full Stack CDI (H/F)", "alternance"));
+        assert!(!is_matching_contract_type("Ingénieur DevOps - CDD", "alternance"));
+        assert!(!is_matching_contract_type("Lead Tech (H/F) - CDI", "alternance"));
+
+        assert!(is_matching_contract_type("Développeur Full Stack CDI (H/F)", "fulltime"));
+        assert!(!is_matching_contract_type("Développeur Front-End en Alternance (H/F)", "fulltime"));
+    }
 
     #[test]
     fn test_parse_age_days() {
