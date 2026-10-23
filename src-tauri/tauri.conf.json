@@ -12,8 +12,10 @@
     "windows": [
       {
         "title": "Alternance Finder 🤖",
-        "width": 900,
-        "height": 700,
+        "width": 1050,
+        "height": 750,
+        "minWidth": 800,
+        "minHeight": 600,
         "devtools": true
       }
     ]
