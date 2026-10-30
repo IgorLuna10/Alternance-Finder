@@ -8,31 +8,37 @@ const SKILL_PRESETS = [
   {
     id: "fullstack",
     label: "Fullstack",
+    keywords: ["développeur fullstack", "développeur web", "react", "node.js"],
     skills: ["Fullstack Developer", "React", "Node.js", "TypeScript", "JavaScript", "SQL", "Git"]
   },
   {
     id: "frontend",
     label: "Frontend",
+    keywords: ["développeur frontend", "react", "vue.js", "javascript"],
     skills: ["Frontend Developer", "React", "Vue.js", "TypeScript", "JavaScript", "Git"]
   },
   {
     id: "backend",
     label: "Backend",
+    keywords: ["développeur backend", "python", "node.js", "java"],
     skills: ["Backend Developer", "Python", "Node.js", "SQL", "PostgreSQL", "Docker", "Git"]
   },
   {
     id: "data",
     label: "Data",
+    keywords: ["data analyst", "data engineer", "python", "sql"],
     skills: ["Data Analyst", "Python", "SQL", "PostgreSQL", "Machine Learning", "Git"]
   },
   {
     id: "sales",
     label: "Sales / BD",
+    keywords: ["business developer", "commercial", "account manager"],
     skills: ["Commercial", "Business Developer", "CRM", "Sales", "Prospection", "Négociation"]
   },
   {
     id: "marketing",
     label: "Marketing",
+    keywords: ["marketing digital", "communication", "growth marketing"],
     skills: ["Marketing", "Communication", "SEO", "Growth Hacking", "Community Manager"]
   }
 ];
@@ -315,6 +321,13 @@ function App() {
     setStatusMessage("All CV skills reset.");
   };
 
+  const handleClearBoth = () => {
+    setCvSkills([]);
+    setKeywords([]);
+    setShowConfirmResetSkills(false);
+    setStatusMessage("All CV skills and search keywords cleared.");
+  };
+
   const handleResetToCv = () => {
     if (lastExtractedSkills && lastExtractedSkills.length > 0) {
       setCvSkills([...lastExtractedSkills]);
@@ -325,8 +338,11 @@ function App() {
 
   const applySkillPreset = (preset) => {
     setCvSkills([...preset.skills]);
+    if (preset.keywords && preset.keywords.length > 0) {
+      setKeywords([...preset.keywords]);
+    }
     setShowConfirmResetSkills(false);
-    setStatusMessage(`Loaded '${preset.label}' skill set (${preset.skills.length} skills).`);
+    setStatusMessage(`Loaded '${preset.label}' preset (updated skills & search keywords).`);
   };
 
   const handleRemoveCvFile = () => {
@@ -344,7 +360,16 @@ function App() {
     }
     const newKeywords = Array.from(new Set([...keywords, ...cvSkills]));
     setKeywords(newKeywords);
-    setStatusMessage("Search keywords updated from your CV skills!");
+    setStatusMessage("Search keywords updated with your CV skills!");
+  };
+
+  const handleReplaceKeywordsWithSkills = () => {
+    if (cvSkills.length === 0) {
+      setStatusMessage("No CV skills to sync. Upload a CV or pick a preset first!");
+      return;
+    }
+    setKeywords([...cvSkills]);
+    setStatusMessage(`Search keywords replaced with your ${cvSkills.length} CV skills!`);
   };
 
   const addSkill = (e) => {
@@ -495,7 +520,18 @@ function App() {
           <h2>Search Configuration</h2>
           
           <div className="form-group">
-            <label>Keywords (Press Enter to add)</label>
+            <div className="keywords-header">
+              <label>Keywords (Press Enter to add)</label>
+              {keywords.length > 0 && (
+                <button 
+                  onClick={() => { setKeywords([]); setStatusMessage("Search keywords cleared."); }} 
+                  className="btn-text-action btn-text-danger" 
+                  title="Clear all search keywords"
+                >
+                  Clear All
+                </button>
+              )}
+            </div>
             <input 
               type="text" 
               value={keywordInput} 
@@ -541,18 +577,19 @@ function App() {
             <div className="cv-presets-section">
               <div className="cv-presets-header">
                 <span className="cv-presets-title">Quick Skill Sets:</span>
-                {cvSkills.length > 0 && (
+                {(cvSkills.length > 0 || keywords.length > 0) && (
                   showConfirmResetSkills ? (
                     <div className="reset-confirm-inline">
-                      <span>Clear all?</span>
-                      <button onClick={handleClearAllSkills} className="btn-confirm-mini-yes">Yes</button>
-                      <button onClick={() => setShowConfirmResetSkills(false)} className="btn-confirm-mini-no">No</button>
+                      <span>Reset:</span>
+                      <button onClick={handleClearAllSkills} className="btn-confirm-mini-yes" title="Clear CV skills only">Skills</button>
+                      <button onClick={handleClearBoth} className="btn-confirm-mini-yes" title="Clear both CV skills & search keywords">Both</button>
+                      <button onClick={() => setShowConfirmResetSkills(false)} className="btn-confirm-mini-no">×</button>
                     </div>
                   ) : (
                     <button 
                       onClick={() => setShowConfirmResetSkills(true)} 
                       className="btn-text-action btn-text-danger" 
-                      title="Clear all active skills"
+                      title="Reset skills or keywords"
                     >
                       Reset All
                     </button>
@@ -565,7 +602,7 @@ function App() {
                     key={preset.id} 
                     onClick={() => applySkillPreset(preset)}
                     className="btn-preset-pill"
-                    title={`Load ${preset.label} skills: ${preset.skills.join(", ")}`}
+                    title={`Load ${preset.label} skills & search keywords`}
                   >
                     {preset.label}
                   </button>
@@ -605,9 +642,14 @@ function App() {
                     className="input-add-skill"
                   />
                 </div>
-                <button onClick={handleSyncSkillsToKeywords} className="btn-sync-keywords">
-                  Sync to Search Keywords
-                </button>
+                <div className="cv-sync-actions">
+                  <button onClick={handleSyncSkillsToKeywords} className="btn-sync-keywords" title="Add all active CV skills to your search keywords">
+                    + Add to Keywords
+                  </button>
+                  <button onClick={handleReplaceKeywordsWithSkills} className="btn-replace-keywords" title="Replace search keywords with your active CV skills">
+                    ⇄ Replace Keywords
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="cv-skills-empty-notice">

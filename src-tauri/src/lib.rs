@@ -49,7 +49,7 @@ fn init_db(app: &tauri::AppHandle) -> SqlResult<Connection> {
     conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('auto_scrape', 'false')", ())?;
     conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('scrape_interval_hours', '4')", ())?;
     conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('recipient_email', 'igor.luna.it@gmail.com')", ())?;
-    conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('keywords', 'alternance developpeur backend, developpeur backend bac+3')", ())?;
+    conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('keywords', 'développeur fullstack, développeur web, react, node.js')", ())?;
     conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('location', 'Paris')", ())?;
     conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('max_age', '2')", ())?;
     conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('contract_type', 'alternance')", ())?;
@@ -359,7 +359,7 @@ async fn run_background_scheduler(app: tauri::AppHandle) {
             
             let (keywords, location, max_age, contract_type) = {
                 let conn = state.db.lock().unwrap();
-                let kw: String = conn.query_row("SELECT value FROM settings WHERE key = 'keywords'", [], |r| r.get(0)).unwrap_or_else(|_| "alternance developpeur backend, developpeur backend bac+3".to_string());
+                let kw: String = conn.query_row("SELECT value FROM settings WHERE key = 'keywords'", [], |r| r.get(0)).unwrap_or_else(|_| "développeur fullstack, développeur web, react, node.js".to_string());
                 let loc: String = conn.query_row("SELECT value FROM settings WHERE key = 'location'", [], |r| r.get(0)).unwrap_or_else(|_| "Paris".to_string());
                 let age: i32 = conn.query_row("SELECT value FROM settings WHERE key = 'max_age'", [], |r| r.get(0))
                     .unwrap_or_else(|_| "2".to_string())
