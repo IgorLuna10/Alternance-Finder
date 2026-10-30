@@ -1,10 +1,16 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./styles.css";
 
 const SKILL_PRESETS = [
+  {
+    id: "backend",
+    label: "Backend",
+    keywords: ["développeur backend", "python", "node.js", "java"],
+    skills: ["Backend Developer", "Python", "Node.js", "SQL", "PostgreSQL", "Docker", "Git"]
+  },
   {
     id: "fullstack",
     label: "Fullstack",
@@ -18,12 +24,6 @@ const SKILL_PRESETS = [
     skills: ["Frontend Developer", "React", "Vue.js", "TypeScript", "JavaScript", "Git"]
   },
   {
-    id: "backend",
-    label: "Backend",
-    keywords: ["développeur backend", "python", "node.js", "java"],
-    skills: ["Backend Developer", "Python", "Node.js", "SQL", "PostgreSQL", "Docker", "Git"]
-  },
-  {
     id: "data",
     label: "Data",
     keywords: ["data analyst", "data engineer", "python", "sql"],
@@ -31,7 +31,7 @@ const SKILL_PRESETS = [
   },
   {
     id: "sales",
-    label: "Sales / BD",
+    label: "Sales/BD",
     keywords: ["business developer", "commercial", "account manager"],
     skills: ["Commercial", "Business Developer", "CRM", "Sales", "Prospection", "Négociation"]
   },
@@ -46,6 +46,7 @@ const SKILL_PRESETS = [
 function App() {
   const [keywordInput, setKeywordInput] = useState("");
   const [keywords, setKeywords] = useState([]);
+  const [expandKeywords, setExpandKeywords] = useState(false);
   const [location, setLocation] = useState("Paris");
   const [maxAge, setMaxAge] = useState(2);
   const [recipientEmail, setRecipientEmail] = useState("igor.luna.it@gmail.com");
@@ -54,14 +55,19 @@ function App() {
   const [statusMessage, setStatusMessage] = useState("");
   const [showConfirmClear, setShowConfirmClear] = useState(false);
   
-  // Automation settings state
+  // Automation settings
   const [autoScrape, setAutoScrape] = useState(false);
   const [scrapeInterval, setScrapeInterval] = useState("4");
   const [contractType, setContractType] = useState("alternance");
   const [isLoaded, setIsLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // CV match settings state
+  // Modals & Popovers
+  const [isSkillsSheetOpen, setIsSkillsSheetOpen] = useState(false);
+  const [isExcludedPopoverOpen, setIsExcludedPopoverOpen] = useState(false);
+  const [openMenuJobUrl, setOpenMenuJobUrl] = useState(null);
+
+  // CV & Skills state
   const [cvSkills, setCvSkills] = useState(() => {
     try {
       const saved = localStorage.getItem("cvSkills");
@@ -81,7 +87,7 @@ function App() {
       return [];
     }
   });
-  const [showConfirmResetSkills, setShowConfirmResetSkills] = useState(false);
+  const [selectedPresetId, setSelectedPresetId] = useState("fullstack");
   const [cvUploadLoading, setCvUploadLoading] = useState(false);
   const [sortBy, setSortBy] = useState("date");
   const [newSkillInput, setNewSkillInput] = useState("");
@@ -98,6 +104,9 @@ function App() {
   });
   const [ignoreInput, setIgnoreInput] = useState("");
 
+  const cvFileInputRef = useRef(null);
+
+  // Sync to localStorage
   useEffect(() => {
     localStorage.setItem("cvSkills", JSON.stringify(cvSkills));
   }, [cvSkills]);
@@ -113,6 +122,31 @@ function App() {
   useEffect(() => {
     localStorage.setItem("ignoreList", JSON.stringify(ignoreList));
   }, [ignoreList]);
+
+  // Global keydown handler for Esc & Return
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        if (isSkillsSheetOpen) setIsSkillsSheetOpen(false);
+        if (isExcludedPopoverOpen) setIsExcludedPopoverOpen(false);
+        if (openMenuJobUrl) setOpenMenuJobUrl(null);
+        if (showConfirmClear) setShowConfirmClear(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isSkillsSheetOpen, isExcludedPopoverOpen, openMenuJobUrl, showConfirmClear]);
+
+  // Close open row menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (openMenuJobUrl && !e.target.closest(".btn-dots-menu") && !e.target.closest(".row-context-menu")) {
+        setOpenMenuJobUrl(null);
+      }
+    };
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, [openMenuJobUrl]);
 
   // Load settings on mount
   useEffect(() => {
@@ -153,10 +187,9 @@ function App() {
     let unlisten;
     const setupListener = async () => {
       try {
-        unlisten = await listen("new-jobs-auto-scraped", (event) => {
-          console.log("New jobs auto-scraped event received");
+        unlisten = await listen("new-jobs-auto-scraped", () => {
           fetchSavedJobs();
-          setStatusMessage("New job offers found in background and saved/drafted!");
+          setStatusMessage("New job offers found in background and saved!");
         });
       } catch (err) {
         console.error("Failed to set up event listener:", err);
@@ -229,7 +262,7 @@ function App() {
       const val = ignoreInput.trim();
       if (!ignoreList.some(item => item.toLowerCase() === val.toLowerCase())) {
         setIgnoreList([...ignoreList, val]);
-        setStatusMessage(`Added "${val}" to ignore options.`);
+        setStatusMessage(`Added "${val}" to ignore list.`);
       }
       setIgnoreInput("");
     }
@@ -238,7 +271,7 @@ function App() {
   const removeIgnoreItem = (indexToRemove) => {
     const removed = ignoreList[indexToRemove];
     setIgnoreList(ignoreList.filter((_, index) => index !== indexToRemove));
-    setStatusMessage(`Removed "${removed}" from ignore options.`);
+    setStatusMessage(`Removed "${removed}" from ignore list.`);
   };
 
   const handleIgnoreCompany = (companyName) => {
@@ -246,8 +279,9 @@ function App() {
     const trimmed = companyName.trim();
     if (!ignoreList.some(item => item.toLowerCase() === trimmed.toLowerCase())) {
       setIgnoreList([...ignoreList, trimmed]);
-      setStatusMessage(`Added "${trimmed}" to ignore options.`);
+      setStatusMessage(`Added "${trimmed}" to ignore list.`);
     }
+    setOpenMenuJobUrl(null);
   };
 
   const handleRunScraper = async () => {
@@ -258,7 +292,6 @@ function App() {
     setLoading(true);
     setStatusMessage("Searching for new opportunities...");
     try {
-      // Pass keywords as a comma-separated string for compatibility with current worker
       const keywordsString = keywords.join(", ");
       const newJobs = await invoke("run_scraper_worker", { 
         keywords: keywordsString, 
@@ -298,7 +331,7 @@ function App() {
       setStatusMessage(`Draft created in Apple Mail with ${jobs.length} offers!`);
     } catch (error) {
       console.error("Failed to draft email via AppleScript:", error);
-      setStatusMessage("Apple Mail draft failed, attempting local client...");
+      setStatusMessage("Apple Mail draft failed, opening default mail client...");
       
       const subject = encodeURIComponent(`Alternance Finder: Found Offers (${jobs.length} offers)`);
       let bodyText = `Hi,\n\nHere are the job offers found by Alternance Finder:\n\n`;
@@ -326,6 +359,8 @@ function App() {
     } catch (error) {
       console.error("Failed to delete job offer:", error);
       setStatusMessage(`Error: ${error}`);
+    } finally {
+      setOpenMenuJobUrl(null);
     }
   };
 
@@ -333,6 +368,7 @@ function App() {
     const subject = encodeURIComponent(`Job Opportunity: ${job.title} at ${job.company}`);
     const body = encodeURIComponent(`Hi,\n\nI found this job opportunity for you:\n\nTitle: ${job.title}\nCompany: ${job.company}\nLocation: ${job.location}\nSource: ${job.source}\nURL: ${job.url}\n\nGood luck!`);
     window.location.href = `mailto:${recipientEmail}?subject=${subject}&body=${body}`;
+    setOpenMenuJobUrl(null);
   };
 
   const handleCvUpload = async (e) => {
@@ -350,11 +386,11 @@ function App() {
       
       setCvSkills(extractedSkills);
       setLastExtractedSkills(extractedSkills);
-      setShowConfirmResetSkills(false);
+      setSelectedPresetId(null);
       if (extractedSkills.length > 0) {
-        setStatusMessage(`CV Parsed! Found ${extractedSkills.length} skills. Added to CV Profile.`);
+        setStatusMessage(`CV Parsed! Found ${extractedSkills.length} skills.`);
       } else {
-        setStatusMessage("CV Parsed, but no matching skills were found. You can add them manually or pick a preset.");
+        setStatusMessage("CV Parsed, but no matching skills found. Pick a preset or add manually.");
       }
     } catch (error) {
       console.error("Error parsing CV:", error);
@@ -364,42 +400,29 @@ function App() {
     }
   };
 
-  const handleClearAllSkills = () => {
-    setCvSkills([]);
-    setShowConfirmResetSkills(false);
-    setStatusMessage("All CV skills reset.");
-  };
-
-  const handleClearBoth = () => {
-    setCvSkills([]);
-    setKeywords([]);
-    setShowConfirmResetSkills(false);
-    setStatusMessage("All CV skills and search keywords cleared.");
-  };
-
   const handleResetToCv = () => {
     if (lastExtractedSkills && lastExtractedSkills.length > 0) {
       setCvSkills([...lastExtractedSkills]);
-      setShowConfirmResetSkills(false);
       setStatusMessage(`Reset to CV extracted skills (${lastExtractedSkills.length} skills).`);
     }
   };
 
   const applySkillPreset = (preset) => {
     setCvSkills([...preset.skills]);
+    setSelectedPresetId(preset.id);
     if (preset.keywords && preset.keywords.length > 0) {
       setKeywords([...preset.keywords]);
     }
-    setShowConfirmResetSkills(false);
-    setStatusMessage(`Loaded '${preset.label}' preset (updated skills & search keywords).`);
+    setStatusMessage(`Loaded '${preset.label}' preset.`);
   };
 
-  const handleRemoveCvFile = () => {
+  const handleRemoveCvFile = (e) => {
+    e.stopPropagation();
     setCvFileName("");
     setLastExtractedSkills([]);
     localStorage.removeItem("cvFileName");
     localStorage.removeItem("lastExtractedSkills");
-    setStatusMessage("CV file removed. You can upload a new one or pick a skill preset.");
+    setStatusMessage("CV file removed.");
   };
 
   const handleSyncSkillsToKeywords = () => {
@@ -409,16 +432,18 @@ function App() {
     }
     const newKeywords = Array.from(new Set([...keywords, ...cvSkills]));
     setKeywords(newKeywords);
-    setStatusMessage("Search keywords updated with your CV skills!");
+    setStatusMessage("Search keywords updated with your skills!");
+    setIsSkillsSheetOpen(false);
   };
 
   const handleReplaceKeywordsWithSkills = () => {
     if (cvSkills.length === 0) {
-      setStatusMessage("No CV skills to sync. Upload a CV or pick a preset first!");
+      setStatusMessage("No CV skills to sync. Upload a CV first!");
       return;
     }
     setKeywords([...cvSkills]);
-    setStatusMessage(`Search keywords replaced with your ${cvSkills.length} CV skills!`);
+    setStatusMessage(`Keywords replaced with ${cvSkills.length} skills!`);
+    setIsSkillsSheetOpen(false);
   };
 
   const addSkill = (e) => {
@@ -432,8 +457,31 @@ function App() {
     }
   };
 
+  const addSkillBtn = () => {
+    if (newSkillInput.trim()) {
+      const formatted = newSkillInput.trim();
+      const capitalized = formatted.charAt(0).toUpperCase() + formatted.slice(1);
+      if (!cvSkills.includes(capitalized)) {
+        setCvSkills([...cvSkills, capitalized]);
+      }
+      setNewSkillInput("");
+    }
+  };
+
   const removeSkill = (skillToRemove) => {
     setCvSkills(cvSkills.filter(s => s !== skillToRemove));
+  };
+
+  // Unified Orange "Reset" Button at sidebar bottom
+  const handleUnifiedReset = () => {
+    setKeywords(["développeur fullstack", "développeur web", "react", "node.js"]);
+    const defaultPreset = SKILL_PRESETS.find(p => p.id === "fullstack");
+    if (defaultPreset) {
+      setCvSkills([...defaultPreset.skills]);
+      setSelectedPresetId("fullstack");
+    }
+    setIgnoreList(["Studi CFA", "Studi"]);
+    setStatusMessage("Search configuration reset to defaults.");
   };
 
   const escapeRegExp = (string) => {
@@ -446,7 +494,6 @@ function App() {
     if (!cleanTerm) return false;
     
     const escaped = escapeRegExp(cleanTerm);
-    // Matches as whole word, respecting symbols like C++ or C#
     const regex = new RegExp(`(?:^|[^a-z0-9+#])${escaped}(?:$|[^a-z0-9+#])`, 'i');
     return regex.test(text);
   };
@@ -456,7 +503,6 @@ function App() {
     const textToSearch = `${jobTitle} ${companyName}`.toLowerCase();
     const matching = [];
 
-    // 1. Match against user's CV Skills / Roles with word boundary check
     if (cvSkills && cvSkills.length > 0) {
       cvSkills.forEach(skill => {
         const skillLower = skill.toLowerCase().trim();
@@ -478,7 +524,6 @@ function App() {
       });
     }
 
-    // 2. Match against active search keywords (excluding generic French stop words & contract terms)
     let keywordMatches = [];
     const genericTerms = ["alternance", "stage", "cdd", "cdi", "emploi", "job", "de", "en", "h/f", "f/h", "à", "dans", "le", "la", "les"];
     keywords.forEach(kw => {
@@ -488,15 +533,12 @@ function App() {
       }
     });
 
-    // Combine unique matching items
     const allMatches = Array.from(new Set([...matching, ...keywordMatches]));
 
-    // If there are no matches with either CV skills or search keywords, score is 0
     if (allMatches.length === 0) {
       return { score: 0, matching: [] };
     }
 
-    // Calculate score based on degree of match
     const baseScore = 50;
     const bonusPerMatch = 20;
     const score = Math.min(100, baseScore + (allMatches.length - 1) * bonusPerMatch);
@@ -563,350 +605,442 @@ function App() {
       await invoke("open_in_browser", { url });
     } catch (error) {
       console.error("Failed to open URL in browser:", error);
-      window.open(url, "_blank"); // Fallback
+      window.open(url, "_blank");
     }
   };
 
+  const visibleKeywords = expandKeywords ? keywords : keywords.slice(0, 3);
+  const hiddenCount = keywords.length - 3;
+  const filteredJobs = getSortedAndScoredJobs();
+
   return (
-    <div className="app-container">
-      <header className="app-header">
-        <h1>Alternance Finder <span style={{ fontSize: "0.8rem", padding: "0.2rem 0.5rem", borderRadius: "12px", background: "rgba(99, 102, 241, 0.2)", color: "#818cf8", verticalAlign: "middle", marginLeft: "0.5rem" }}>v1.2</span></h1>
-        <p>Automate your job search with ease.</p>
+    <div className="macos-window">
+      {/* 52px macOS Title Bar */}
+      <header className="macos-titlebar">
+        <div className="titlebar-left">
+          <span className="app-title">Alternance Finder</span>
+          <span className="version-pill">v1.2</span>
+        </div>
+        <div className="titlebar-right">
+          <button 
+            onClick={handleShareAllOffers} 
+            className="btn-mac-secondary" 
+            disabled={jobs.length === 0 || loading}
+          >
+            Share all
+          </button>
+          {showConfirmClear ? (
+            <div style={{ display: "inline-flex", gap: "6px", alignItems: "center" }}>
+              <span style={{ fontSize: "12px", color: "var(--danger)" }}>Clear all?</span>
+              <button onClick={handleClearOffers} className="btn-mac-secondary" style={{ color: "var(--danger)" }}>Yes</button>
+              <button onClick={() => setShowConfirmClear(false)} className="btn-mac-secondary">No</button>
+            </div>
+          ) : (
+            <button 
+              onClick={() => setShowConfirmClear(true)} 
+              className="btn-mac-secondary" 
+              disabled={jobs.length === 0}
+            >
+              Clear offers
+            </button>
+          )}
+        </div>
       </header>
 
-      <main className="app-grid">
-        <section className="controls-panel">
-          <h2>Search Configuration</h2>
-          
-          <div className="form-group">
-            <div className="keywords-header">
-              <label>Keywords (Press Enter to add)</label>
-              {keywords.length > 0 && (
-                <button 
-                  onClick={() => { setKeywords([]); setStatusMessage("Search keywords cleared."); }} 
-                  className="btn-text-action btn-text-danger" 
-                  title="Clear all search keywords"
-                >
-                  Clear All
-                </button>
-              )}
-            </div>
+      {/* Main Window Body: 300px Sidebar + Content */}
+      <div className="macos-body">
+        {/* Left Sidebar (300px) */}
+        <aside className="macos-sidebar">
+          {/* 1. Search field (30px) */}
+          <div className="sidebar-search-box">
+            <svg className="search-magnifier-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="7" cy="7" r="4.5" />
+              <line x1="10.5" y1="10.5" x2="14" y2="14" />
+            </svg>
             <input 
               type="text" 
               value={keywordInput} 
               onKeyDown={addKeyword}
               onChange={(e) => setKeywordInput(e.target.value)} 
-              placeholder="e.g. software engineer"
+              placeholder="Job title or keyword"
+              className="sidebar-search-input"
+              aria-label="Job title or keyword search"
             />
-            <div className="keyword-tags">
-              {keywords.map((kw, index) => (
-                <span key={index} className="keyword-tag">
-                  {kw}
-                  <button onClick={() => removeKeyword(index)}>×</button>
+          </div>
+
+          {/* 2. Keyword chips (24px pills) */}
+          {keywords.length > 0 && (
+            <div className="keyword-chips-wrap">
+              {visibleKeywords.map((kw, index) => (
+                <span key={index} className="mac-chip">
+                  <span>{kw}</span>
+                  <button 
+                    onClick={() => removeKeyword(index)} 
+                    className="chip-remove-btn"
+                    aria-label={`Remove keyword ${kw}`}
+                  >
+                    ×
+                  </button>
                 </span>
               ))}
-            </div>
-          </div>
- 
-          <div className="form-group cv-profiler-section">
-            <label>CV Profile Matcher</label>
-            <div className="cv-upload-box">
-              <input 
-                type="file" 
-                id="cv-file-input" 
-                accept=".pdf" 
-                onClick={(e) => { e.target.value = null; }}
-                onChange={handleCvUpload} 
-                style={{ display: 'none' }} 
-              />
-              <label htmlFor="cv-file-input" className="cv-upload-label" title={cvFileName ? `Loaded: ${cvFileName}` : "Upload ATS CV (PDF)"}>
-                {cvUploadLoading ? "Analyzing CV..." : cvFileName ? `📄 ${cvFileName}` : "Upload ATS CV (PDF)"}
-              </label>
-              {cvFileName && (
+              {hiddenCount > 0 && !expandKeywords && (
                 <button 
-                  onClick={handleRemoveCvFile} 
-                  className="btn-clear-cv" 
-                  title="Remove CV file"
+                  onClick={() => setExpandKeywords(true)} 
+                  className="chip-more-btn"
                 >
-                  ×
+                  +{hiddenCount} more
+                </button>
+              )}
+              {expandKeywords && hiddenCount > 0 && (
+                <button 
+                  onClick={() => setExpandKeywords(false)} 
+                  className="chip-more-btn"
+                >
+                  Show less
                 </button>
               )}
             </div>
+          )}
 
-            <div className="cv-presets-section">
-              <div className="cv-presets-header">
-                <span className="cv-presets-title">Quick Skill Sets:</span>
-                {(cvSkills.length > 0 || keywords.length > 0) && (
-                  showConfirmResetSkills ? (
-                    <div className="reset-confirm-inline">
-                      <span>Reset:</span>
-                      <button onClick={handleClearAllSkills} className="btn-confirm-mini-yes" title="Clear CV skills only">Skills</button>
-                      <button onClick={handleClearBoth} className="btn-confirm-mini-yes" title="Clear both CV skills & search keywords">Both</button>
-                      <button onClick={() => setShowConfirmResetSkills(false)} className="btn-confirm-mini-no">×</button>
-                    </div>
+          {/* 3. Section Profile */}
+          <div className="grouped-section">
+            <span className="section-label">Profile</span>
+            <div className="grouped-list">
+              {/* CV Row */}
+              <div 
+                className="grouped-row grouped-row-clickable" 
+                onClick={() => cvFileInputRef.current && cvFileInputRef.current.click()}
+              >
+                <input 
+                  type="file" 
+                  ref={cvFileInputRef}
+                  accept=".pdf" 
+                  onClick={(e) => { e.target.value = null; }}
+                  onChange={handleCvUpload} 
+                  style={{ display: "none" }} 
+                />
+                <span className="row-label">CV</span>
+                <div className="row-content-right">
+                  {cvUploadLoading ? (
+                    <span>Analyzing...</span>
+                  ) : cvFileName ? (
+                    <>
+                      <span title={cvFileName} style={{ maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {cvFileName}
+                      </span>
+                      <button 
+                        onClick={handleRemoveCvFile} 
+                        className="chip-remove-btn" 
+                        aria-label="Remove CV file"
+                        style={{ marginLeft: "4px" }}
+                      >
+                        ×
+                      </button>
+                    </>
                   ) : (
-                    <button 
-                      onClick={() => setShowConfirmResetSkills(true)} 
-                      className="btn-text-action btn-text-danger" 
-                      title="Reset skills or keywords"
-                    >
-                      Reset All
-                    </button>
-                  )
-                )}
+                    <span style={{ color: "var(--accent)" }}>Upload PDF</span>
+                  )}
+                  <span className="row-chevron">›</span>
+                </div>
               </div>
-              <div className="cv-presets-pills">
-                {SKILL_PRESETS.map((preset) => (
-                  <button 
-                    key={preset.id} 
-                    onClick={() => applySkillPreset(preset)}
-                    className="btn-preset-pill"
-                    title={`Load ${preset.label} skills & search keywords`}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
+
+              {/* Skills Row */}
+              <div 
+                className="grouped-row grouped-row-clickable"
+                onClick={() => setIsSkillsSheetOpen(true)}
+              >
+                <span className="row-label">Skills</span>
+                <div className="row-content-right">
+                  <span>{cvSkills.length} active</span>
+                  <span className="row-chevron">›</span>
+                </div>
               </div>
             </div>
+          </div>
 
-            {cvSkills.length > 0 ? (
-              <div className="cv-skills-container">
-                <div className="cv-skills-header">
-                  <span className="cv-skills-title">Active Skills ({cvSkills.length}):</span>
-                  {lastExtractedSkills.length > 0 && cvFileName && JSON.stringify(cvSkills) !== JSON.stringify(lastExtractedSkills) && (
-                    <button 
-                      onClick={handleResetToCv} 
-                      className="btn-text-action" 
-                      title="Reset skills back to the ones extracted from your uploaded CV"
-                    >
-                      ↺ Reset to CV
-                    </button>
-                  )}
-                </div>
-                <div className="keyword-tags cv-skills-tags">
-                  {cvSkills.map((skill, index) => (
-                    <span key={index} className="keyword-tag cv-skill-tag">
-                      {skill}
-                      <button onClick={() => removeSkill(skill)}>×</button>
-                    </span>
-                  ))}
-                </div>
-                <div className="add-skill-group">
+          {/* 4. Section Where and when */}
+          <div className="grouped-section">
+            <span className="section-label">Where and when</span>
+            <div className="grouped-list">
+              {/* Location */}
+              <div className="grouped-row">
+                <span className="row-label">Location</span>
+                <div className="row-content-right">
                   <input 
                     type="text" 
-                    value={newSkillInput} 
-                    onKeyDown={addSkill}
-                    onChange={(e) => setNewSkillInput(e.target.value)} 
-                    placeholder="Add skill (press Enter)"
-                    className="input-add-skill"
+                    value={location} 
+                    onChange={(e) => setLocation(e.target.value)} 
+                    className="row-inline-input"
+                    aria-label="Location"
+                    placeholder="e.g. Paris"
                   />
                 </div>
-                <div className="cv-sync-actions">
-                  <button onClick={handleSyncSkillsToKeywords} className="btn-sync-keywords" title="Add all active CV skills to your search keywords">
-                    + Add to Keywords
-                  </button>
-                  <button onClick={handleReplaceKeywordsWithSkills} className="btn-replace-keywords" title="Replace search keywords with your active CV skills">
-                    ⇄ Replace Keywords
-                  </button>
-                </div>
               </div>
-            ) : (
-              <div className="cv-skills-empty-notice">
-                <span>Tip: Click a Quick Skill Set above or upload a PDF CV to enable compatibility scoring.</span>
-              </div>
-            )}
-          </div>
 
-          <div className="form-group">
-            <label>Location</label>
-            <input 
-              type="text" 
-              value={location} 
-              onChange={(e) => setLocation(e.target.value)} 
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Max Age (days)</label>
-            <input 
-              type="number" 
-              value={maxAge} 
-              onChange={(e) => setMaxAge(e.target.value)} 
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Contract Type</label>
-            <select 
-              value={contractType} 
-              onChange={(e) => setContractType(e.target.value)}
-              className="select-interval"
-            >
-              <option value="alternance">Apprenticeship / Alternance</option>
-              <option value="fulltime">Full-time (CDI / CDD)</option>
-              <option value="all">All Contracts</option>
-            </select>
-          </div>
-
-          <div className="form-group ignore-options-section">
-            <div className="keywords-header">
-              <label>Ignore Options (Excluded Schools & Companies)</label>
-              {ignoreList.length > 0 && (
-                <button 
-                  onClick={() => { setIgnoreList(["Studi CFA", "Studi"]); setStatusMessage("Ignore list reset to default."); }} 
-                  className="btn-text-action" 
-                  title="Reset to default ignored schools"
-                >
-                  Reset Default
-                </button>
-              )}
-            </div>
-            <input 
-              type="text" 
-              value={ignoreInput} 
-              onKeyDown={addIgnoreItem}
-              onChange={(e) => setIgnoreInput(e.target.value)} 
-              placeholder="e.g. Studi CFA (press Enter)"
-            />
-            <div className="keyword-tags">
-              {ignoreList.map((item, index) => (
-                <span key={index} className="keyword-tag ignore-tag">
-                  {item}
-                  <button onClick={() => removeIgnoreItem(index)}>×</button>
-                </span>
-              ))}
-            </div>
-            <span className="input-hint">Offers matching these schools or companies are automatically blocked.</span>
-          </div>
-
-          <div className="form-group">
-            <label>Recipient Email</label>
-            <input 
-              type="email" 
-              value={recipientEmail} 
-              onChange={(e) => setRecipientEmail(e.target.value)} 
-            />
-            <span className="input-hint">Used for manually sharing and for background auto-updates.</span>
-          </div>
-
-          <hr className="panel-divider" />
-
-          <button 
-            onClick={handleRunScraper} 
-            disabled={loading}
-            className="btn-trigger"
-          >
-            {loading ? "Searching..." : "Start Search"}
-          </button>
-
-          {statusMessage && <p className="status-banner">{statusMessage}</p>}
-        </section>
-
-        <section className="feed-panel">
-          <div className="feed-header">
-            <div className="feed-header-title">
-              <h2>Found Offers ({getSortedAndScoredJobs().length}{hideZeroMatches && jobs.length !== getSortedAndScoredJobs().length ? ` of ${jobs.length}` : ""})</h2>
-            </div>
-            
-            {jobs.length > 0 && (
-              <div className="feed-header-toolbar">
-                <div className="sort-controls">
-                  <label className="filter-checkbox-label">
-                    <input 
-                      type="checkbox" 
-                      checked={hideZeroMatches} 
-                      onChange={(e) => setHideZeroMatches(e.target.checked)} 
-                    />
-                    <span>Hide 0% Matches</span>
-                  </label>
-
-                  <div className="sort-group">
-                    <span className="sort-label">Sort:</span>
+              {/* Posted within */}
+              <div className="grouped-row">
+                <span className="row-label">Posted within</span>
+                <div className="row-content-right">
+                  <div className="mac-select-wrap">
                     <select 
-                      value={sortBy} 
-                      onChange={(e) => setSortBy(e.target.value)} 
-                      className="sort-select"
+                      value={maxAge} 
+                      onChange={(e) => setMaxAge(parseInt(e.target.value) || 2)} 
+                      className="mac-popup-select"
+                      aria-label="Posted within days"
                     >
-                      <option value="match">Match Score</option>
-                      <option value="date">Date Added</option>
+                      <option value={1}>1 day</option>
+                      <option value={2}>2 days</option>
+                      <option value={3}>3 days</option>
+                      <option value={7}>7 days</option>
+                      <option value={14}>14 days</option>
+                      <option value={30}>30 days</option>
                     </select>
+                    <span className="mac-select-arrow">↕</span>
                   </div>
                 </div>
+              </div>
 
-                <div className="feed-actions">
-                  <button onClick={handleShareAllOffers} className="btn-share-all" disabled={loading}>
-                    Share All via Email
-                  </button>
-                  {showConfirmClear ? (
-                    <div className="clear-confirm-group">
-                      <span className="confirm-text">Confirm clear?</span>
-                      <button onClick={handleClearOffers} className="btn-clear-confirm-yes">Yes</button>
-                      <button onClick={() => setShowConfirmClear(false)} className="btn-clear-confirm-no">No</button>
-                    </div>
-                  ) : (
-                    <button onClick={() => setShowConfirmClear(true)} className="btn-clear">
-                      Clear Offers
-                    </button>
-                  )}
+              {/* Contract */}
+              <div className="grouped-row">
+                <span className="row-label">Contract</span>
+                <div className="row-content-right">
+                  <div className="mac-select-wrap">
+                    <select 
+                      value={contractType} 
+                      onChange={(e) => setContractType(e.target.value)} 
+                      className="mac-popup-select"
+                      aria-label="Contract type"
+                    >
+                      <option value="alternance">Alternance</option>
+                      <option value="fulltime">Full-time</option>
+                      <option value="all">All</option>
+                    </select>
+                    <span className="mac-select-arrow">↕</span>
+                  </div>
                 </div>
               </div>
-            )}
+            </div>
           </div>
-          <div className="job-list">
-            {jobs.length === 0 ? (
-              <p className="empty-state">No offers found yet. Start the search!</p>
+
+          {/* 5. Section Filtering */}
+          <div className="grouped-section">
+            <span className="section-label">Filtering</span>
+            <div className="grouped-list">
+              {/* Excluded */}
+              <div 
+                className="grouped-row grouped-row-clickable"
+                onClick={() => setIsExcludedPopoverOpen(true)}
+              >
+                <span className="row-label">Excluded</span>
+                <div className="row-content-right">
+                  <span>{ignoreList.length} active</span>
+                  <span className="row-chevron">›</span>
+                </div>
+              </div>
+
+              {/* Email */}
+              <div className="grouped-row">
+                <span className="row-label">Email</span>
+                <div className="row-content-right">
+                  <input 
+                    type="email" 
+                    value={recipientEmail} 
+                    onChange={(e) => setRecipientEmail(e.target.value)} 
+                    className="row-inline-input"
+                    aria-label="Recipient Email"
+                    placeholder="email@domain.com"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Automation Section (Preserved & Styled) */}
+          <div className="grouped-section">
+            <span className="section-label">Automation</span>
+            <div className="grouped-list">
+              <div className="grouped-row">
+                <span className="row-label">Auto-scrape</span>
+                <div className="row-content-right">
+                  <label className="mac-switch" aria-label="Toggle auto scrape">
+                    <input 
+                      type="checkbox" 
+                      checked={autoScrape} 
+                      onChange={(e) => setAutoScrape(e.target.checked)} 
+                    />
+                    <span className="mac-slider"></span>
+                  </label>
+                </div>
+              </div>
+              <div className="grouped-row">
+                <span className="row-label">Interval</span>
+                <div className="row-content-right">
+                  <div className="mac-select-wrap">
+                    <select 
+                      value={scrapeInterval} 
+                      onChange={(e) => setScrapeInterval(e.target.value)} 
+                      className="mac-popup-select"
+                      disabled={!autoScrape}
+                      aria-label="Auto scrape interval"
+                    >
+                      <option value="2">Every 2h</option>
+                      <option value="4">Every 4h</option>
+                      <option value="8">Every 8h</option>
+                      <option value="12">Every 12h</option>
+                      <option value="24">Every 24h</option>
+                    </select>
+                    <span className="mac-select-arrow">↕</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 6. Sidebar Footer: Start Search + Orange Reset Button */}
+          <div className="sidebar-footer">
+            <button 
+              onClick={handleRunScraper} 
+              disabled={loading}
+              className="btn-mac-primary sidebar-start-btn"
+            >
+              {loading ? "Searching..." : "Start Search"}
+            </button>
+
+            {statusMessage && (
+              <span className="sidebar-status-banner">{statusMessage}</span>
+            )}
+
+            <button 
+              onClick={handleUnifiedReset} 
+              className="btn-text-orange sidebar-reset-btn"
+              title="Reset configuration to defaults"
+            >
+              Reset
+            </button>
+          </div>
+        </aside>
+
+        {/* Content Area / Offers Feed */}
+        <main className="macos-content">
+          <div className="feed-header-bar">
+            <h1 className="feed-header-title">
+              Found offers <span className="feed-count-secondary">{filteredJobs.length}</span>
+            </h1>
+
+            <div className="feed-toolbar-controls">
+              <label className="toggle-filter-label">
+                <span>Hide 0% matches</span>
+                <span className="mac-switch">
+                  <input 
+                    type="checkbox" 
+                    checked={hideZeroMatches} 
+                    onChange={(e) => setHideZeroMatches(e.target.checked)} 
+                  />
+                  <span className="mac-slider"></span>
+                </span>
+              </label>
+
+              <div className="sort-select-group">
+                <span>Sort:</span>
+                <div className="mac-select-wrap">
+                  <select 
+                    value={sortBy} 
+                    onChange={(e) => setSortBy(e.target.value)} 
+                    className="mac-popup-select"
+                    aria-label="Sort offers"
+                  >
+                    <option value="date">Date added</option>
+                    <option value="match">Match score</option>
+                  </select>
+                  <span className="mac-select-arrow">↕</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="offers-list-container">
+            {filteredJobs.length === 0 ? (
+              <div className="empty-offers-state">
+                <span>No offers found.</span>
+                <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
+                  Try broadening your keywords or click "Start Search".
+                </span>
+              </div>
             ) : (
-              getSortedAndScoredJobs().map((job, index) => {
+              filteredJobs.map((job, index) => {
                 const hasMatch = job.matchScore > 0;
-                let badgeClass = "badge-match-low";
-                if (job.matchScore >= 70) badgeClass = "badge-match-high";
-                else if (job.matchScore >= 40) badgeClass = "badge-match-med";
+                let badgeClass = "badge-low";
+                if (job.matchScore >= 70) badgeClass = "badge-high";
+                else if (job.matchScore >= 40) badgeClass = "badge-med";
+
+                const isMenuOpen = openMenuJobUrl === job.url;
 
                 return (
-                  <div key={index} className={`job-card ${hasMatch ? 'job-card-matched' : ''}`}>
-                    <div className="job-card-header">
-                      <h3>{job.title}</h3>
-                      <div className="job-card-badges">
+                  <div key={index} className={`offer-row ${hasMatch ? 'offer-row-matched' : ''}`}>
+                    <div className="offer-left-details">
+                      <div className="offer-title-wrap">
+                        <h2 className="offer-title">{job.title}</h2>
                         {hasMatch && (
-                          <span className={`badge-match ${badgeClass}`} title={`Matching skills: ${job.matchingSkills.join(', ')}`}>
-                            {job.matchScore}% Match
+                          <span className={`offer-badge-match ${badgeClass}`} title={`Matching: ${job.matchingSkills?.join(', ')}`}>
+                            {job.matchScore}% match
                           </span>
                         )}
-                        <span className="badge-source">{job.source}</span>
+                      </div>
+                      <div className="offer-meta-line">
+                        {job.company || "Entreprise partenaire"} · {job.location || "France"} · {job.source}
                       </div>
                     </div>
-                    <p className="job-meta">{job.company} — {job.location}</p>
-                    
-                    {hasMatch && job.matchingSkills && job.matchingSkills.length > 0 && (
-                      <div className="matching-skills-list">
-                        <span className="match-label">Matches:</span>
-                        {job.matchingSkills.map((sk, sIdx) => (
-                          <span key={sIdx} className="matching-skill-item">{sk}</span>
-                        ))}
-                      </div>
-                    )}
 
-                    <div className="job-card-footer">
-                      <span className="badge-age">{job.age_label}</span>
-                      <div className="actions">
-                        <button onClick={() => sendEmail(job)} className="btn-email">
-                          Share via Email
+                    <div className="offer-right-actions">
+                      <span className="offer-date">{job.age_label}</span>
+                      <button 
+                        onClick={() => handleViewOffer(job.url)} 
+                        className="btn-view-offer"
+                      >
+                        View
+                      </button>
+
+                      <div style={{ position: "relative" }}>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenMenuJobUrl(isMenuOpen ? null : job.url);
+                          }} 
+                          className="btn-dots-menu"
+                          aria-label="More actions"
+                          aria-expanded={isMenuOpen}
+                        >
+                          ···
                         </button>
-                        {job.company && job.company !== "Entreprise partenaire" && (
-                          <button 
-                            onClick={() => handleIgnoreCompany(job.company)} 
-                            className="btn-ignore"
-                            title={`Add "${job.company}" to ignore options`}
-                          >
-                            Ignore Company
-                          </button>
+
+                        {isMenuOpen && (
+                          <div className="row-context-menu" role="menu">
+                            <button 
+                              onClick={() => sendEmail(job)} 
+                              className="menu-item"
+                              role="menuitem"
+                            >
+                              Share via email
+                            </button>
+                            {job.company && job.company !== "Entreprise partenaire" && (
+                              <button 
+                                onClick={() => handleIgnoreCompany(job.company)} 
+                                className="menu-item"
+                                role="menuitem"
+                              >
+                                Ignore company
+                              </button>
+                            )}
+                            <div className="menu-divider" />
+                            <button 
+                              onClick={() => handleDeleteJob(job.url)} 
+                              className="menu-item menu-item-danger"
+                              role="menuitem"
+                            >
+                              Erase
+                            </button>
+                          </div>
                         )}
-                        <button onClick={() => handleDeleteJob(job.url)} className="btn-delete">
-                          Erase
-                        </button>
-                        <button onClick={() => handleViewOffer(job.url)} className="btn-apply">
-                          View Offer
-                        </button>
                       </div>
                     </div>
                   </div>
@@ -914,8 +1048,200 @@ function App() {
               })
             )}
           </div>
-        </section>
-      </main>
+        </main>
+      </div>
+
+      {/* SKILLS SHEET (480px, Dimmed Backdrop) */}
+      {isSkillsSheetOpen && (
+        <div className="mac-modal-backdrop" onClick={() => setIsSkillsSheetOpen(false)}>
+          <div className="mac-sheet-card" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+            <div className="sheet-header">
+              <div className="sheet-title-group">
+                <h2>Skills</h2>
+                <div className="sheet-caption">
+                  {cvSkills.length} active{cvFileName ? ", taken from your CV" : ", from active profile"}
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsSkillsSheetOpen(false)} 
+                className="sheet-close-btn"
+                aria-label="Close sheet"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Quick sets: 6-segment control */}
+            <div className="grouped-section">
+              <span className="section-label">Quick sets</span>
+              <div className="mac-segment-control" role="tablist">
+                {SKILL_PRESETS.map((preset) => (
+                  <button 
+                    key={preset.id}
+                    onClick={() => applySkillPreset(preset)}
+                    className={`segment-btn ${selectedPresetId === preset.id ? "segment-btn-active" : ""}`}
+                    role="tab"
+                    aria-selected={selectedPresetId === preset.id}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Active well with chips */}
+            <div className="grouped-section">
+              <span className="section-label">Active</span>
+              <div className="active-well">
+                {cvSkills.length === 0 ? (
+                  <span style={{ color: "var(--text-secondary)", fontSize: "12px", padding: "4px" }}>
+                    No skills added yet. Click a quick set above or add skills below.
+                  </span>
+                ) : (
+                  cvSkills.map((skill, index) => (
+                    <span key={index} className="mac-chip">
+                      <span>{skill}</span>
+                      <button 
+                        onClick={() => removeSkill(skill)} 
+                        className="chip-remove-btn"
+                        aria-label={`Remove skill ${skill}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Add skill input + button */}
+            <div className="sheet-add-group">
+              <input 
+                type="text" 
+                value={newSkillInput} 
+                onKeyDown={addSkill}
+                onChange={(e) => setNewSkillInput(e.target.value)} 
+                placeholder="Add skill (press Enter)"
+                className="sheet-add-input"
+                aria-label="Add skill"
+              />
+              <button onClick={addSkillBtn} className="btn-mac-secondary">
+                Add
+              </button>
+            </div>
+
+            {/* Footer */}
+            <div className="sheet-footer">
+              <div>
+                {lastExtractedSkills.length > 0 && (
+                  <button onClick={handleResetToCv} className="btn-text-orange">
+                    Reset to CV
+                  </button>
+                )}
+              </div>
+              <div className="sheet-footer-right">
+                <button 
+                  onClick={handleReplaceKeywordsWithSkills} 
+                  className="btn-mac-secondary"
+                >
+                  Replace keywords
+                </button>
+                <button 
+                  onClick={handleSyncSkillsToKeywords} 
+                  className="btn-mac-primary"
+                >
+                  Add to keywords
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EXCLUDED POPOVER (Modal / Popover) */}
+      {isExcludedPopoverOpen && (
+        <div className="mac-modal-backdrop" onClick={() => setIsExcludedPopoverOpen(false)}>
+          <div className="popover-card" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+            <div className="sheet-header">
+              <div className="sheet-title-group">
+                <h2 style={{ fontSize: "16px", margin: 0 }}>Excluded Companies & Schools</h2>
+                <div className="sheet-caption">
+                  {ignoreList.length} excluded from results
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsExcludedPopoverOpen(false)} 
+                className="sheet-close-btn"
+                aria-label="Close popover"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="active-well" style={{ minHeight: "80px" }}>
+              {ignoreList.length === 0 ? (
+                <span style={{ color: "var(--text-secondary)", fontSize: "12px", padding: "4px" }}>
+                  No companies or schools excluded.
+                </span>
+              ) : (
+                ignoreList.map((item, index) => (
+                  <span key={index} className="mac-chip">
+                    <span>{item}</span>
+                    <button 
+                      onClick={() => removeIgnoreItem(index)} 
+                      className="chip-remove-btn"
+                      aria-label={`Remove excluded ${item}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))
+              )}
+            </div>
+
+            <div className="sheet-add-group">
+              <input 
+                type="text" 
+                value={ignoreInput} 
+                onKeyDown={addIgnoreItem}
+                onChange={(e) => setIgnoreInput(e.target.value)} 
+                placeholder="e.g. Studi CFA (press Enter)"
+                className="sheet-add-input"
+                aria-label="Exclude company or school"
+              />
+              <button 
+                onClick={() => {
+                  if (ignoreInput.trim()) {
+                    const val = ignoreInput.trim();
+                    if (!ignoreList.some(item => item.toLowerCase() === val.toLowerCase())) {
+                      setIgnoreList([...ignoreList, val]);
+                    }
+                    setIgnoreInput("");
+                  }
+                }} 
+                className="btn-mac-secondary"
+              >
+                Add
+              </button>
+            </div>
+
+            <div className="sheet-footer" style={{ borderTop: "1px solid var(--hairline)", paddingTop: "8px" }}>
+              <button 
+                onClick={() => { setIgnoreList(["Studi CFA", "Studi"]); setStatusMessage("Ignore list reset to default."); }} 
+                className="btn-text-orange"
+              >
+                Reset Defaults
+              </button>
+              <button 
+                onClick={() => setIsExcludedPopoverOpen(false)} 
+                className="btn-mac-secondary"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -937,13 +1263,13 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ padding: "2rem", color: "#f87171", fontFamily: "sans-serif" }}>
+        <div style={{ padding: "2rem", color: "var(--danger)", fontFamily: "var(--font-family)" }}>
           <h2>Application Error</h2>
-          <p>Alternance Finder v1.2 encountered an error:</p>
-          <pre style={{ background: "#1e1e1e", color: "#f87171", padding: "1rem", borderRadius: "8px", overflow: "auto" }}>
+          <p>Alternance Finder encountered an error:</p>
+          <pre style={{ background: "var(--grouped-surface)", color: "var(--danger)", padding: "1rem", borderRadius: "8px", overflow: "auto" }}>
             {this.state.error?.toString()}
           </pre>
-          <button onClick={() => window.location.reload()} style={{ padding: "0.5rem 1rem", marginTop: "1rem", cursor: "pointer", borderRadius: "6px", background: "#6366f1", color: "#fff", border: "none" }}>
+          <button onClick={() => window.location.reload()} className="btn-mac-primary" style={{ marginTop: "1rem" }}>
             Reload App
           </button>
         </div>
