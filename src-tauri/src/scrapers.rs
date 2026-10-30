@@ -1057,10 +1057,13 @@ pub async fn scrape_all(keywords_str: &str, location: &str, max_age: i32, contra
         all_jobs.extend(jobs);
     }
 
-    // Deduplicate jobs by URL and title before returning, and enforce contract matching
+    // Deduplicate jobs by URL and title before returning, and enforce contract matching & ignore filter
     let mut seen_urls = std::collections::HashSet::new();
     all_jobs.retain(|job| {
         if job.url.is_empty() || job.title.is_empty() {
+            return false;
+        }
+        if is_ignored_job(&job.title, &job.company) {
             return false;
         }
         if !is_matching_contract_type(&job.title, contract_type) {
@@ -1070,6 +1073,13 @@ pub async fn scrape_all(keywords_str: &str, location: &str, max_age: i32, contra
     });
 
     all_jobs
+}
+
+pub fn is_ignored_job(title: &str, company: &str) -> bool {
+    let t = title.to_lowercase();
+    let c = company.to_lowercase();
+    let defaults = ["studi cfa", "studi"];
+    defaults.iter().any(|&ign| c.contains(ign) || t.contains(ign))
 }
 
 pub fn is_matching_contract_type(title: &str, contract_type: &str) -> bool {
@@ -1121,6 +1131,16 @@ mod tests {
 
         assert!(is_matching_contract_type("Développeur Full Stack CDI (H/F)", "fulltime"));
         assert!(!is_matching_contract_type("Développeur Front-End en Alternance (H/F)", "fulltime"));
+    }
+
+    #[test]
+    fn test_is_ignored_job() {
+        assert!(is_ignored_job("Alternance - Développeur Web Studi CFA", ""));
+        assert!(is_ignored_job("Alternance - Data Analyst Junior H/F", "Studi CFA"));
+        assert!(is_ignored_job("Développeur Python", "Studi Cfa"));
+        assert!(is_ignored_job("Alternance Informatique", "Studi"));
+        assert!(!is_ignored_job("Développeur Full Stack", "Google"));
+        assert!(!is_ignored_job("Ingénieur DevOps", "Airbus"));
     }
 
     #[test]

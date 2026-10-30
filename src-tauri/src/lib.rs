@@ -53,6 +53,10 @@ fn init_db(app: &tauri::AppHandle) -> SqlResult<Connection> {
     conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('location', 'Paris')", ())?;
     conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('max_age', '2')", ())?;
     conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('contract_type', 'alternance')", ())?;
+    conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('ignore_list', 'Studi CFA, Studi')", ())?;
+
+    // Automatically purge any existing jobs matching Studi CFA / Studi
+    let _ = conn.execute("DELETE FROM jobs WHERE LOWER(company) LIKE '%studi%' OR LOWER(title) LIKE '%studi%'", ());
 
     Ok(conn)
 }
@@ -68,10 +72,30 @@ async fn run_scraper_worker(
 ) -> Result<Vec<Job>, String> {
     let scraped_jobs = scrapers::scrape_all(&keywords, &location, max_age, &contract_type).await;
 
+    let ignore_list: Vec<String> = {
+        let conn = state.db.lock().unwrap();
+        conn.query_row("SELECT value FROM settings WHERE key = 'ignore_list'", [], |r| r.get(0))
+            .unwrap_or_else(|_| "Studi CFA, Studi".to_string())
+            .split(',')
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty())
+            .collect()
+    };
+
+    let is_ignored = |title: &str, company: &str| -> bool {
+        let t = title.to_lowercase();
+        let c = company.to_lowercase();
+        ignore_list.iter().any(|ign| c.contains(ign) || t.contains(ign))
+    };
+
     let conn = state.db.lock().unwrap();
     let mut new_jobs = Vec::new();
 
     for job in scraped_jobs {
+        if is_ignored(&job.title, &job.company) {
+            continue;
+        }
+
         let result = conn.execute(
             "INSERT INTO jobs (url, title, company, location, source, age_label) 
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -205,6 +229,19 @@ fn save_settings(
                     (&k, &v_str),
                 )
                 .map_err(|e| e.to_string())?;
+
+                if k == "ignore_list" {
+                    for item in v_str.split(',') {
+                        let term = item.trim().to_lowercase();
+                        if !term.is_empty() {
+                            let pattern = format!("%{}%", term);
+                            let _ = conn.execute(
+                                "DELETE FROM jobs WHERE LOWER(company) LIKE ?1 OR LOWER(title) LIKE ?1",
+                                [&pattern],
+                            );
+                        }
+                    }
+                }
             }
         }
     }
@@ -357,7 +394,7 @@ async fn run_background_scheduler(app: tauri::AppHandle) {
         if now_sec - last_run >= interval_hours * 3600 {
             println!("Tauri background: Starting auto-scrape cycle...");
             
-            let (keywords, location, max_age, contract_type) = {
+            let (keywords, location, max_age, contract_type, ignore_list) = {
                 let conn = state.db.lock().unwrap();
                 let kw: String = conn.query_row("SELECT value FROM settings WHERE key = 'keywords'", [], |r| r.get(0)).unwrap_or_else(|_| "développeur fullstack, développeur web, react, node.js".to_string());
                 let loc: String = conn.query_row("SELECT value FROM settings WHERE key = 'location'", [], |r| r.get(0)).unwrap_or_else(|_| "Paris".to_string());
@@ -366,7 +403,13 @@ async fn run_background_scheduler(app: tauri::AppHandle) {
                     .parse()
                     .unwrap_or(2);
                 let ct: String = conn.query_row("SELECT value FROM settings WHERE key = 'contract_type'", [], |r| r.get(0)).unwrap_or_else(|_| "alternance".to_string());
-                (kw, loc, age, ct)
+                let ign: Vec<String> = conn.query_row("SELECT value FROM settings WHERE key = 'ignore_list'", [], |r| r.get(0))
+                    .unwrap_or_else(|_| "Studi CFA, Studi".to_string())
+                    .split(',')
+                    .map(|s| s.trim().to_lowercase())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                (kw, loc, age, ct, ign)
             };
 
             let scraped_jobs = scrapers::scrape_all(&keywords, &location, max_age, &contract_type).await;
@@ -374,7 +417,17 @@ async fn run_background_scheduler(app: tauri::AppHandle) {
 
             {
                 let conn = state.db.lock().unwrap();
+                let is_ignored = |title: &str, company: &str| -> bool {
+                    let t = title.to_lowercase();
+                    let c = company.to_lowercase();
+                    ignore_list.iter().any(|ign| c.contains(ign) || t.contains(ign))
+                };
+
                 for job in scraped_jobs {
+                    if is_ignored(&job.title, &job.company) {
+                        continue;
+                    }
+
                     let result = conn.execute(
                         "INSERT INTO jobs (url, title, company, location, source, age_label) 
                          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",

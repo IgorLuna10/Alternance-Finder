@@ -982,6 +982,44 @@ input:checked + .slider:before {
   background: rgba(255, 68, 68, 0.1);
 }
 
+.btn-ignore {
+  background: transparent;
+  color: #f87171;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  font-weight: 500;
+  font-size: 0.85rem;
+  padding: 0.5rem 0.8rem;
+  border-radius: 6px;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.btn-ignore:hover {
+  background: rgba(248, 113, 113, 0.15);
+  border-color: #f87171;
+  color: #fca5a5;
+}
+
+.keyword-tag.ignore-tag {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}
+
+.keyword-tag.ignore-tag:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: #ef4444;
+}
+
+.keyword-tag.ignore-tag button {
+  color: #f87171;
+}
+
+.keyword-tag.ignore-tag button:hover {
+  color: #ffffff;
+  background: rgba(239, 68, 68, 0.5);
+}
+
 .filter-checkbox-label {
   display: inline-flex;
   align-items: center;

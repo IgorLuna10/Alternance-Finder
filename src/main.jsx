@@ -87,6 +87,17 @@ function App() {
   const [newSkillInput, setNewSkillInput] = useState("");
   const [hideZeroMatches, setHideZeroMatches] = useState(false);
 
+  // Ignore / Excluded options state
+  const [ignoreList, setIgnoreList] = useState(() => {
+    try {
+      const saved = localStorage.getItem("ignoreList");
+      return saved ? JSON.parse(saved) : ["Studi CFA", "Studi"];
+    } catch {
+      return ["Studi CFA", "Studi"];
+    }
+  });
+  const [ignoreInput, setIgnoreInput] = useState("");
+
   useEffect(() => {
     localStorage.setItem("cvSkills", JSON.stringify(cvSkills));
   }, [cvSkills]);
@@ -98,6 +109,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem("lastExtractedSkills", JSON.stringify(lastExtractedSkills));
   }, [lastExtractedSkills]);
+
+  useEffect(() => {
+    localStorage.setItem("ignoreList", JSON.stringify(ignoreList));
+  }, [ignoreList]);
 
   // Load settings on mount
   useEffect(() => {
@@ -114,6 +129,12 @@ function App() {
           if (settings.keywords) {
             const kwList = settings.keywords.split(",").map(k => k.trim()).filter(Boolean);
             setKeywords(kwList);
+          }
+          if (settings.ignore_list) {
+            const ignList = settings.ignore_list.split(",").map(k => k.trim()).filter(Boolean);
+            if (ignList.length > 0) {
+              setIgnoreList(ignList);
+            }
           }
         }
       } catch (error) {
@@ -166,9 +187,11 @@ function App() {
             keywords: keywords.join(", "),
             location: location,
             max_age: maxAge.toString(),
-            contract_type: contractType
+            contract_type: contractType,
+            ignore_list: ignoreList.join(", ")
           }
         });
+        await fetchSavedJobs();
       } catch (error) {
         console.error("Failed to save settings to DB:", error);
       } finally {
@@ -177,7 +200,7 @@ function App() {
     }, 600);
 
     return () => clearTimeout(timer);
-  }, [keywords, location, maxAge, recipientEmail, autoScrape, scrapeInterval, contractType, isLoaded]);
+  }, [keywords, location, maxAge, recipientEmail, autoScrape, scrapeInterval, contractType, ignoreList, isLoaded]);
 
   const fetchSavedJobs = async () => {
     try {
@@ -199,6 +222,32 @@ function App() {
 
   const removeKeyword = (indexToRemove) => {
     setKeywords(keywords.filter((_, index) => index !== indexToRemove));
+  };
+
+  const addIgnoreItem = (e) => {
+    if (e.key === "Enter" && ignoreInput.trim()) {
+      const val = ignoreInput.trim();
+      if (!ignoreList.some(item => item.toLowerCase() === val.toLowerCase())) {
+        setIgnoreList([...ignoreList, val]);
+        setStatusMessage(`Added "${val}" to ignore options.`);
+      }
+      setIgnoreInput("");
+    }
+  };
+
+  const removeIgnoreItem = (indexToRemove) => {
+    const removed = ignoreList[indexToRemove];
+    setIgnoreList(ignoreList.filter((_, index) => index !== indexToRemove));
+    setStatusMessage(`Removed "${removed}" from ignore options.`);
+  };
+
+  const handleIgnoreCompany = (companyName) => {
+    if (!companyName || companyName === "Entreprise partenaire") return;
+    const trimmed = companyName.trim();
+    if (!ignoreList.some(item => item.toLowerCase() === trimmed.toLowerCase())) {
+      setIgnoreList([...ignoreList, trimmed]);
+      setStatusMessage(`Added "${trimmed}" to ignore options.`);
+    }
   };
 
   const handleRunScraper = async () => {
@@ -480,8 +529,18 @@ function App() {
     return true;
   };
 
+  const isIgnored = (job) => {
+    const compLower = (job.company || "").toLowerCase();
+    const titleLower = (job.title || "").toLowerCase();
+    return ignoreList.some(item => {
+      const term = item.toLowerCase().trim();
+      return term && (compLower.includes(term) || titleLower.includes(term));
+    });
+  };
+
   const getSortedAndScoredJobs = () => {
     let list = jobs
+      .filter(job => !isIgnored(job))
       .filter(job => isMatchingContractType(job.title, contractType))
       .map(job => {
         const { score, matching } = calculateMatchScore(job.title, job.company);
@@ -689,6 +748,37 @@ function App() {
             </select>
           </div>
 
+          <div className="form-group ignore-options-section">
+            <div className="keywords-header">
+              <label>Ignore Options (Excluded Schools & Companies)</label>
+              {ignoreList.length > 0 && (
+                <button 
+                  onClick={() => { setIgnoreList(["Studi CFA", "Studi"]); setStatusMessage("Ignore list reset to default."); }} 
+                  className="btn-text-action" 
+                  title="Reset to default ignored schools"
+                >
+                  Reset Default
+                </button>
+              )}
+            </div>
+            <input 
+              type="text" 
+              value={ignoreInput} 
+              onKeyDown={addIgnoreItem}
+              onChange={(e) => setIgnoreInput(e.target.value)} 
+              placeholder="e.g. Studi CFA (press Enter)"
+            />
+            <div className="keyword-tags">
+              {ignoreList.map((item, index) => (
+                <span key={index} className="keyword-tag ignore-tag">
+                  {item}
+                  <button onClick={() => removeIgnoreItem(index)}>×</button>
+                </span>
+              ))}
+            </div>
+            <span className="input-hint">Offers matching these schools or companies are automatically blocked.</span>
+          </div>
+
           <div className="form-group">
             <label>Recipient Email</label>
             <input 
@@ -802,6 +892,15 @@ function App() {
                         <button onClick={() => sendEmail(job)} className="btn-email">
                           Share via Email
                         </button>
+                        {job.company && job.company !== "Entreprise partenaire" && (
+                          <button 
+                            onClick={() => handleIgnoreCompany(job.company)} 
+                            className="btn-ignore"
+                            title={`Add "${job.company}" to ignore options`}
+                          >
+                            Ignore Company
+                          </button>
+                        )}
                         <button onClick={() => handleDeleteJob(job.url)} className="btn-delete">
                           Erase
                         </button>
