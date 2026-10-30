@@ -4,6 +4,39 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./styles.css";
 
+const SKILL_PRESETS = [
+  {
+    id: "fullstack",
+    label: "Fullstack",
+    skills: ["Fullstack Developer", "React", "Node.js", "TypeScript", "JavaScript", "SQL", "Git"]
+  },
+  {
+    id: "frontend",
+    label: "Frontend",
+    skills: ["Frontend Developer", "React", "Vue.js", "TypeScript", "JavaScript", "Git"]
+  },
+  {
+    id: "backend",
+    label: "Backend",
+    skills: ["Backend Developer", "Python", "Node.js", "SQL", "PostgreSQL", "Docker", "Git"]
+  },
+  {
+    id: "data",
+    label: "Data",
+    skills: ["Data Analyst", "Python", "SQL", "PostgreSQL", "Machine Learning", "Git"]
+  },
+  {
+    id: "sales",
+    label: "Sales / BD",
+    skills: ["Commercial", "Business Developer", "CRM", "Sales", "Prospection", "Négociation"]
+  },
+  {
+    id: "marketing",
+    label: "Marketing",
+    skills: ["Marketing", "Communication", "SEO", "Growth Hacking", "Community Manager"]
+  }
+];
+
 function App() {
   const [keywordInput, setKeywordInput] = useState("");
   const [keywords, setKeywords] = useState([]);
@@ -34,6 +67,15 @@ function App() {
   const [cvFileName, setCvFileName] = useState(() => {
     return localStorage.getItem("cvFileName") || "";
   });
+  const [lastExtractedSkills, setLastExtractedSkills] = useState(() => {
+    try {
+      const saved = localStorage.getItem("lastExtractedSkills");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [showConfirmResetSkills, setShowConfirmResetSkills] = useState(false);
   const [cvUploadLoading, setCvUploadLoading] = useState(false);
   const [sortBy, setSortBy] = useState("date");
   const [newSkillInput, setNewSkillInput] = useState("");
@@ -46,6 +88,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem("cvFileName", cvFileName);
   }, [cvFileName]);
+
+  useEffect(() => {
+    localStorage.setItem("lastExtractedSkills", JSON.stringify(lastExtractedSkills));
+  }, [lastExtractedSkills]);
 
   // Load settings on mount
   useEffect(() => {
@@ -248,10 +294,12 @@ function App() {
       const extractedSkills = await invoke("parse_cv_bytes", { bytes });
       
       setCvSkills(extractedSkills);
+      setLastExtractedSkills(extractedSkills);
+      setShowConfirmResetSkills(false);
       if (extractedSkills.length > 0) {
         setStatusMessage(`CV Parsed! Found ${extractedSkills.length} skills. Added to CV Profile.`);
       } else {
-        setStatusMessage("CV Parsed, but no matching skills were found. You can add them manually.");
+        setStatusMessage("CV Parsed, but no matching skills were found. You can add them manually or pick a preset.");
       }
     } catch (error) {
       console.error("Error parsing CV:", error);
@@ -259,6 +307,34 @@ function App() {
     } finally {
       setCvUploadLoading(false);
     }
+  };
+
+  const handleClearAllSkills = () => {
+    setCvSkills([]);
+    setShowConfirmResetSkills(false);
+    setStatusMessage("All CV skills reset.");
+  };
+
+  const handleResetToCv = () => {
+    if (lastExtractedSkills && lastExtractedSkills.length > 0) {
+      setCvSkills([...lastExtractedSkills]);
+      setShowConfirmResetSkills(false);
+      setStatusMessage(`Reset to CV extracted skills (${lastExtractedSkills.length} skills).`);
+    }
+  };
+
+  const applySkillPreset = (preset) => {
+    setCvSkills([...preset.skills]);
+    setShowConfirmResetSkills(false);
+    setStatusMessage(`Loaded '${preset.label}' skill set (${preset.skills.length} skills).`);
+  };
+
+  const handleRemoveCvFile = () => {
+    setCvFileName("");
+    setLastExtractedSkills([]);
+    localStorage.removeItem("cvFileName");
+    localStorage.removeItem("lastExtractedSkills");
+    setStatusMessage("CV file removed. You can upload a new one or pick a skill preset.");
   };
 
   const handleSyncSkillsToKeywords = () => {
@@ -410,7 +486,7 @@ function App() {
   return (
     <div className="app-container">
       <header className="app-header">
-        <h1>Alternance Finder <span style={{ fontSize: "0.8rem", padding: "0.2rem 0.5rem", borderRadius: "12px", background: "rgba(99, 102, 241, 0.2)", color: "#818cf8", verticalAlign: "middle", marginLeft: "0.5rem" }}>v1.0.0</span></h1>
+        <h1>Alternance Finder <span style={{ fontSize: "0.8rem", padding: "0.2rem 0.5rem", borderRadius: "12px", background: "rgba(99, 102, 241, 0.2)", color: "#818cf8", verticalAlign: "middle", marginLeft: "0.5rem" }}>v1.1</span></h1>
         <p>Automate your job search with ease.</p>
       </header>
 
@@ -444,25 +520,73 @@ function App() {
                 type="file" 
                 id="cv-file-input" 
                 accept=".pdf" 
+                onClick={(e) => { e.target.value = null; }}
                 onChange={handleCvUpload} 
                 style={{ display: 'none' }} 
               />
-              <label htmlFor="cv-file-input" className="cv-upload-label">
+              <label htmlFor="cv-file-input" className="cv-upload-label" title={cvFileName ? `Loaded: ${cvFileName}` : "Upload ATS CV (PDF)"}>
                 {cvUploadLoading ? "Analyzing CV..." : cvFileName ? `📄 ${cvFileName}` : "Upload ATS CV (PDF)"}
               </label>
               {cvFileName && (
                 <button 
-                  onClick={() => { setCvFileName(""); setCvSkills([]); }} 
+                  onClick={handleRemoveCvFile} 
                   className="btn-clear-cv" 
-                  title="Remove CV"
+                  title="Remove CV file"
                 >
                   ×
                 </button>
               )}
             </div>
-            {cvSkills.length > 0 && (
+
+            <div className="cv-presets-section">
+              <div className="cv-presets-header">
+                <span className="cv-presets-title">Quick Skill Sets:</span>
+                {cvSkills.length > 0 && (
+                  showConfirmResetSkills ? (
+                    <div className="reset-confirm-inline">
+                      <span>Clear all?</span>
+                      <button onClick={handleClearAllSkills} className="btn-confirm-mini-yes">Yes</button>
+                      <button onClick={() => setShowConfirmResetSkills(false)} className="btn-confirm-mini-no">No</button>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={() => setShowConfirmResetSkills(true)} 
+                      className="btn-text-action btn-text-danger" 
+                      title="Clear all active skills"
+                    >
+                      Reset All
+                    </button>
+                  )
+                )}
+              </div>
+              <div className="cv-presets-pills">
+                {SKILL_PRESETS.map((preset) => (
+                  <button 
+                    key={preset.id} 
+                    onClick={() => applySkillPreset(preset)}
+                    className="btn-preset-pill"
+                    title={`Load ${preset.label} skills: ${preset.skills.join(", ")}`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {cvSkills.length > 0 ? (
               <div className="cv-skills-container">
-                <span className="cv-skills-title">Extracted Skills:</span>
+                <div className="cv-skills-header">
+                  <span className="cv-skills-title">Active Skills ({cvSkills.length}):</span>
+                  {lastExtractedSkills.length > 0 && cvFileName && JSON.stringify(cvSkills) !== JSON.stringify(lastExtractedSkills) && (
+                    <button 
+                      onClick={handleResetToCv} 
+                      className="btn-text-action" 
+                      title="Reset skills back to the ones extracted from your uploaded CV"
+                    >
+                      ↺ Reset to CV
+                    </button>
+                  )}
+                </div>
                 <div className="keyword-tags cv-skills-tags">
                   {cvSkills.map((skill, index) => (
                     <span key={index} className="keyword-tag cv-skill-tag">
@@ -484,6 +608,10 @@ function App() {
                 <button onClick={handleSyncSkillsToKeywords} className="btn-sync-keywords">
                   Sync to Search Keywords
                 </button>
+              </div>
+            ) : (
+              <div className="cv-skills-empty-notice">
+                <span>Tip: Click a Quick Skill Set above or upload a PDF CV to enable compatibility scoring.</span>
               </div>
             )}
           </div>
@@ -670,7 +798,7 @@ class ErrorBoundary extends React.Component {
       return (
         <div style={{ padding: "2rem", color: "#f87171", fontFamily: "sans-serif" }}>
           <h2>Application Error</h2>
-          <p>Alternance Finder v1.0.0 encountered an error:</p>
+          <p>Alternance Finder v1.1 encountered an error:</p>
           <pre style={{ background: "#1e1e1e", color: "#f87171", padding: "1rem", borderRadius: "8px", overflow: "auto" }}>
             {this.state.error?.toString()}
           </pre>

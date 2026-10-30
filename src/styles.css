@@ -616,12 +616,72 @@ input:checked + .slider:before {
   background: rgba(255, 59, 48, 0.1);
 }
 
-.cv-skills-container {
-  margin-top: 1rem;
+/* Quick Skill Presets */
+.cv-presets-section {
+  margin-top: 0.75rem;
   padding: 0.75rem;
   background: #252525;
   border-radius: 8px;
   border: 1px solid var(--border-color);
+}
+
+.cv-presets-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.cv-presets-title {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cv-presets-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.btn-preset-pill {
+  background: #2d2d2d;
+  color: #c5c5c5;
+  border: 1px solid #444;
+  padding: 0.25rem 0.55rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-preset-pill:hover {
+  background: rgba(255, 102, 0, 0.15);
+  border-color: var(--brand-color);
+  color: #ffaa55;
+  transform: translateY(-1px);
+}
+
+.cv-skills-container {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: #252525;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.cv-skills-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+  gap: 0.4rem;
 }
 
 .cv-skills-title {
@@ -629,9 +689,81 @@ input:checked + .slider:before {
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--text-muted);
-  margin-bottom: 0.5rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+.btn-text-action {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  transition: all 0.2s;
+  font-weight: 500;
+}
+
+.btn-text-action:hover {
+  color: var(--brand-color);
+  background: rgba(255, 102, 0, 0.12);
+}
+
+.btn-text-danger {
+  color: #ff6666;
+}
+
+.btn-text-danger:hover {
+  color: #ff3333;
+  background: rgba(255, 51, 51, 0.12);
+}
+
+.reset-confirm-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.btn-confirm-mini-yes, .btn-confirm-mini-no {
+  border: none;
+  font-weight: 600;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-confirm-mini-yes {
+  background: #ff3333;
+  color: white;
+}
+
+.btn-confirm-mini-yes:hover {
+  background: #cc2222;
+}
+
+.btn-confirm-mini-no {
+  background: #444;
+  color: #ddd;
+}
+
+.btn-confirm-mini-no:hover {
+  background: #555;
+}
+
+.cv-skills-empty-notice {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed #383838;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.35;
 }
 
 .cv-skills-tags {
