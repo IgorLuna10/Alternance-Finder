@@ -684,6 +684,8 @@ input:checked + .slider:before {
   background: #252525;
   border-radius: 8px;
   border: 1px solid var(--border-color);
+  box-sizing: border-box;
+  width: 100%;
 }
 
 .cv-skills-header {
@@ -705,28 +707,31 @@ input:checked + .slider:before {
 }
 
 .btn-text-action {
-  background: transparent;
-  border: none;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   color: var(--text-muted);
   font-size: 0.75rem;
   cursor: pointer;
-  padding: 0.15rem 0.4rem;
-  border-radius: 4px;
+  padding: 0.2rem 0.5rem;
+  border-radius: 12px;
   transition: all 0.2s;
   font-weight: 500;
 }
 
 .btn-text-action:hover {
   color: var(--brand-color);
+  border-color: var(--brand-color);
   background: rgba(255, 102, 0, 0.12);
 }
 
 .btn-text-danger {
   color: #ff6666;
+  border-color: rgba(255, 102, 102, 0.25);
 }
 
 .btn-text-danger:hover {
   color: #ff3333;
+  border-color: #ff3333;
   background: rgba(255, 51, 51, 0.12);
 }
 
@@ -780,6 +785,26 @@ input:checked + .slider:before {
 .cv-skills-tags {
   margin-top: 0;
   margin-bottom: 0.75rem;
+  max-height: 155px;
+  overflow-y: auto;
+  padding-right: 0.3rem;
+}
+
+.cv-skills-tags::-webkit-scrollbar {
+  width: 4px;
+}
+
+.cv-skills-tags::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cv-skills-tags::-webkit-scrollbar-thumb {
+  background: #3d3d3d;
+  border-radius: 2px;
+}
+
+.cv-skills-tags::-webkit-scrollbar-thumb:hover {
+  background: var(--brand-color);
 }
 
 .cv-skill-tag {
@@ -792,6 +817,7 @@ input:checked + .slider:before {
   display: flex;
   gap: 0.5rem;
   margin-bottom: 0.75rem;
+  width: 100%;
 }
 
 .input-add-skill {
@@ -799,24 +825,28 @@ input:checked + .slider:before {
   padding: 0.5rem 0.75rem !important;
   font-size: 0.85rem !important;
   border-radius: 6px !important;
+  box-sizing: border-box;
 }
 
 .cv-sync-actions {
   display: flex;
-  gap: 0.5rem;
+  flex-direction: column;
+  gap: 0.45rem;
   margin-top: 0.75rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .btn-sync-keywords, .btn-replace-keywords {
-  flex: 1;
-  padding: 0.5rem 0.4rem;
+  width: 100%;
+  padding: 0.55rem 0.75rem;
   border-radius: 6px;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
   text-align: center;
-  white-space: nowrap;
+  box-sizing: border-box;
 }
 
 .btn-sync-keywords {
