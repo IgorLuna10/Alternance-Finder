@@ -511,7 +511,7 @@ function App() {
   return (
     <div className="app-container">
       <header className="app-header">
-        <h1>Alternance Finder <span style={{ fontSize: "0.8rem", padding: "0.2rem 0.5rem", borderRadius: "12px", background: "rgba(99, 102, 241, 0.2)", color: "#818cf8", verticalAlign: "middle", marginLeft: "0.5rem" }}>v1.1</span></h1>
+        <h1>Alternance Finder <span style={{ fontSize: "0.8rem", padding: "0.2rem 0.5rem", borderRadius: "12px", background: "rgba(99, 102, 241, 0.2)", color: "#818cf8", verticalAlign: "middle", marginLeft: "0.5rem" }}>v1.2</span></h1>
         <p>Automate your job search with ease.</p>
       </header>
 
@@ -840,7 +840,7 @@ class ErrorBoundary extends React.Component {
       return (
         <div style={{ padding: "2rem", color: "#f87171", fontFamily: "sans-serif" }}>
           <h2>Application Error</h2>
-          <p>Alternance Finder v1.1 encountered an error:</p>
+          <p>Alternance Finder v1.2 encountered an error:</p>
           <pre style={{ background: "#1e1e1e", color: "#f87171", padding: "1rem", borderRadius: "8px", overflow: "auto" }}>
             {this.state.error?.toString()}
           </pre>
