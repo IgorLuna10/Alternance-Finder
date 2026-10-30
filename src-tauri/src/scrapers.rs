@@ -762,6 +762,223 @@ pub async fn scrape_indeed(keywords: &[String], location: &str, max_age: i32, co
     jobs
 }
 
+fn get_coordinates_for_city(city: &str) -> Option<(f64, f64)> {
+    let c = city.trim().to_lowercase();
+    if c.is_empty() || c == "france" || c == "toute la france" || c == "remote" || c == "télétravail" || c == "teletravail" {
+        return None;
+    }
+
+    if c.contains("paris") || c.contains("île-de-france") || c.contains("ile-de-france") || c.contains("idf")
+        || c.starts_with("75") || c.starts_with("92") || c.starts_with("93") || c.starts_with("94")
+        || c.starts_with("78") || c.starts_with("91") || c.starts_with("95") || c.starts_with("77") {
+        Some((48.8566, 2.3522))
+    } else if c.contains("lyon") || c.starts_with("69") {
+        Some((45.7640, 4.8357))
+    } else if c.contains("marseille") || c.starts_with("13") {
+        Some((43.2965, 5.3698))
+    } else if c.contains("toulouse") || c.starts_with("31") {
+        Some((43.6047, 1.4442))
+    } else if c.contains("bordeaux") || c.starts_with("33") {
+        Some((44.8378, -0.5792))
+    } else if c.contains("lille") || c.starts_with("59") {
+        Some((50.6292, 3.0573))
+    } else if c.contains("nantes") || c.starts_with("44") {
+        Some((47.2184, -1.5536))
+    } else if c.contains("strasbourg") || c.starts_with("67") {
+        Some((48.5734, 7.7521))
+    } else if c.contains("rennes") || c.starts_with("35") {
+        Some((48.1173, -1.6778))
+    } else if c.contains("montpellier") || c.starts_with("34") {
+        Some((43.6108, 3.8767))
+    } else if c.contains("nice") || c.starts_with("06") {
+        Some((43.7102, 7.2620))
+    } else if c.contains("grenoble") || c.starts_with("38") {
+        Some((45.1885, 5.7245))
+    } else if c.contains("rouen") || c.starts_with("76") {
+        Some((49.4432, 1.0999))
+    } else if c.contains("toulon") || c.starts_with("83") {
+        Some((43.1242, 5.9280))
+    } else if c.contains("angers") || c.starts_with("49") {
+        Some((47.4784, -0.5632))
+    } else if c.contains("dijon") || c.starts_with("21") {
+        Some((47.3220, 5.0415))
+    } else if c.contains("brest") || c.starts_with("29") {
+        Some((48.3904, -4.4861))
+    } else if c.contains("le mans") || c.starts_with("72") {
+        Some((48.0061, 0.1996))
+    } else if c.contains("clermont") || c.starts_with("63") {
+        Some((45.7772, 3.0870))
+    } else if c.contains("tours") || c.starts_with("37") {
+        Some((47.3941, 0.6848))
+    } else if c.contains("amiens") || c.starts_with("80") {
+        Some((49.8941, 2.2958))
+    } else if c.contains("metz") || c.starts_with("57") {
+        Some((49.1193, 6.1757))
+    } else if c.contains("besançon") || c.contains("besancon") || c.starts_with("25") {
+        Some((47.2378, 6.0241))
+    } else if c.contains("orléans") || c.contains("orleans") || c.starts_with("45") {
+        Some((47.9029, 1.9093))
+    } else if c.contains("mulhouse") || c.starts_with("68") {
+        Some((47.7508, 7.3359))
+    } else if c.contains("caen") || c.starts_with("14") {
+        Some((49.1829, -0.3707))
+    } else if c.contains("nancy") || c.starts_with("54") {
+        Some((48.6921, 6.1844))
+    } else {
+        None
+    }
+}
+
+pub async fn scrape_lba(keywords: &[String], location: &str, max_age: i32, contract_type: &str) -> Vec<Job> {
+    // La Bonne Alternance exclusively focuses on apprenticeship & professionalization contracts.
+    // If the search is explicitly for fulltime (CDI/CDD), skip.
+    if contract_type == "fulltime" {
+        return Vec::new();
+    }
+
+    let mut jobs = Vec::new();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .unwrap_or_default();
+
+    let coords = get_coordinates_for_city(location);
+
+    for kw in keywords {
+        let mut query = kw.trim().to_string();
+        let query_lower = query.to_lowercase();
+        if query_lower.contains("developer") {
+            query = query.replace("Developer", "Développeur").replace("developer", "développeur");
+        } else if query_lower.contains("engineer") {
+            query = query.replace("Engineer", "Ingénieur").replace("engineer", "ingénieur");
+        }
+
+        let mut queries_to_try = vec![query.clone()];
+        let ql = query.to_lowercase();
+        if !ql.contains("développ") && !ql.contains("developp") && !ql.contains("ingénieur") && !ql.contains("ingenieur") && !ql.contains("informatique") {
+            queries_to_try.push(format!("développeur {}", query));
+        }
+
+        let mut found_for_kw = false;
+        for q in queries_to_try {
+            if found_for_kw {
+                break;
+            }
+
+            let mut url = format!(
+                "https://labonnealternance.apprentissage.beta.gouv.fr/api/v1/search?q={}&mode=emplois&is_algo_company=false&hitsPerPage=50",
+                urlencoding::encode(&q)
+            );
+
+            if let Some((lat, lon)) = coords {
+                url.push_str(&format!("&latitude={}&longitude={}&radius=40", lat, lon));
+            }
+
+            let resp = client
+                .get(&url)
+                .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
+                .header("Accept", "application/json")
+                .header("Referer", "https://labonnealternance.apprentissage.beta.gouv.fr/")
+                .send()
+                .await;
+
+            let resp = match resp {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("La Bonne Alternance request failed for '{}': {}", q, e);
+                    continue;
+                }
+            };
+
+            let body: Value = match resp.json().await {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("La Bonne Alternance JSON parsing failed: {}", e);
+                    continue;
+                }
+            };
+
+            let hits = match body.get("hits").and_then(|h| h.as_array()) {
+                Some(h) if !h.is_empty() => h,
+                _ => continue,
+            };
+
+            found_for_kw = true;
+
+            for hit in hits {
+                let title = hit.get("title").and_then(|t| t.as_str()).unwrap_or("").trim().to_string();
+                if title.is_empty() {
+                    continue;
+                }
+
+                let sub_type = hit.get("sub_type").and_then(|s| s.as_str()).unwrap_or("offres_emploi_partenaires");
+                let url_id = match hit.get("url_id").or_else(|| hit.get("_id")).and_then(|u| u.as_str()) {
+                    Some(id) if !id.is_empty() => id,
+                    _ => continue,
+                };
+
+                let job_url = format!(
+                    "https://labonnealternance.apprentissage.beta.gouv.fr/emploi/{}/{}/offre",
+                    sub_type, url_id
+                );
+
+                // Publication date & max_age calculation
+                let pub_date_str = hit.get("publication_date").and_then(|d| d.as_str()).unwrap_or("");
+                let mut exact_date_label = None;
+                let age_days = if !pub_date_str.is_empty() {
+                    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(pub_date_str) {
+                        let local_dt = dt.with_timezone(&chrono::Local);
+                        exact_date_label = Some(local_dt.format("%d/%m/%Y").to_string());
+                        let diff = chrono::Utc::now().signed_duration_since(dt.with_timezone(&chrono::Utc));
+                        Some(diff.num_days().max(0) as i32)
+                    } else {
+                        parse_age_days(pub_date_str)
+                    }
+                } else {
+                    None
+                };
+
+                if let Some(age) = age_days {
+                    if age > max_age {
+                        continue;
+                    }
+                }
+
+                let age_label = exact_date_label.unwrap_or_else(|| format_absolute_date(age_days, pub_date_str));
+
+                let company_raw = hit.get("organization_name").and_then(|c| c.as_str()).unwrap_or("").trim();
+                let company = if company_raw.is_empty() {
+                    "Entreprise partenaire".to_string()
+                } else {
+                    company_raw.to_string()
+                };
+
+                let address_raw = hit.get("address").and_then(|a| a.as_str()).unwrap_or("").trim();
+                let job_location = if address_raw.is_empty() {
+                    if location.is_empty() {
+                        "France".to_string()
+                    } else {
+                        location.to_string()
+                    }
+                } else {
+                    address_raw.to_string()
+                };
+
+                jobs.push(Job {
+                    title,
+                    company,
+                    location: job_location,
+                    url: job_url,
+                    source: "La Bonne Alternance".to_string(),
+                    age_label,
+                });
+            }
+        }
+    }
+
+    jobs
+}
+
 pub async fn scrape_all(keywords_str: &str, location: &str, max_age: i32, contract_type: &str) -> Vec<Job> {
     let keywords: Vec<String> = keywords_str
         .split(',')
@@ -812,6 +1029,13 @@ pub async fn scrape_all(keywords_str: &str, location: &str, max_age: i32, contra
         scrape_indeed(&kws5, &loc5, max_age, &ct5).await
     });
 
+    let kws6 = Arc::clone(&kws);
+    let loc6 = loc.clone();
+    let ct6 = ct.clone();
+    let handle_lba = tokio::spawn(async move {
+        scrape_lba(&kws6, &loc6, max_age, &ct6).await
+    });
+
     let mut all_jobs = Vec::new();
 
     if let Ok(jobs) = handle_wttj.await {
@@ -827,6 +1051,9 @@ pub async fn scrape_all(keywords_str: &str, location: &str, max_age: i32, contra
         all_jobs.extend(jobs);
     }
     if let Ok(jobs) = handle_ind.await {
+        all_jobs.extend(jobs);
+    }
+    if let Ok(jobs) = handle_lba.await {
         all_jobs.extend(jobs);
     }
 
@@ -972,6 +1199,14 @@ mod tests {
         let ind_jobs = scrape_indeed(&keywords, location, max_age, "alternance").await;
         println!("Indeed found {} jobs", ind_jobs.len());
         for j in ind_jobs.iter().take(3) {
+            println!("  - {} at {} (url: {})", j.title, j.company, j.url);
+        }
+
+        println!("--- Testing scrape_lba ---");
+        let lba_keywords = vec!["Développeur".to_string(), "Python".to_string()];
+        let lba_jobs = scrape_lba(&lba_keywords, location, max_age, "alternance").await;
+        println!("La Bonne Alternance found {} jobs", lba_jobs.len());
+        for j in lba_jobs.iter().take(3) {
             println!("  - {} at {} (url: {})", j.title, j.company, j.url);
         }
     }
