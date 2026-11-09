@@ -11,7 +11,7 @@
   "app": {
     "windows": [
       {
-        "title": "Alternance Finder 🤖",
+        "title": "Alternance Finder",
         "width": 1050,
         "height": 750,
         "minWidth": 900,
