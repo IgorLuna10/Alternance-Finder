@@ -4,29 +4,108 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./styles.css";
 
+/* ==========================================================================
+   Phosphor / Solar Style SVG Icons (AI Design Skills Approved)
+   ========================================================================== */
+
+function SearchIcon(props) {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="11" cy="11" r="7.5" />
+      <line x1="21" y1="21" x2="16.5" y2="16.5" />
+    </svg>
+  );
+}
+
+function CloseIcon(props) {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  );
+}
+
+function ChevronRightIcon(props) {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
+  );
+}
+
+function CaretUpDownIcon(props) {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <polyline points="7 15 12 20 17 15" />
+      <polyline points="7 9 12 4 17 9" />
+    </svg>
+  );
+}
+
+function DotsThreeIcon(props) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <circle cx="5" cy="12" r="2" />
+      <circle cx="12" cy="12" r="2" />
+      <circle cx="19" cy="12" r="2" />
+    </svg>
+  );
+}
+
+function ArrowUpRightIcon(props) {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <line x1="7" y1="17" x2="17" y2="7" />
+      <polyline points="7 7 17 7 17 17" />
+    </svg>
+  );
+}
+
+function BriefcaseIcon(props) {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+      <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+    </svg>
+  );
+}
+
+function SkeletonOfferRow() {
+  return (
+    <div className="skeleton-row" aria-hidden="true">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div className="skeleton-line" style={{ width: "42%", height: "16px" }} />
+        <div className="skeleton-line" style={{ width: "80px", height: "16px" }} />
+      </div>
+      <div className="skeleton-line" style={{ width: "28%", height: "12px" }} />
+    </div>
+  );
+}
+
 const SKILL_PRESETS = [
-  {
-    id: "backend",
-    label: "Backend",
-    keywords: ["développeur backend", "python", "node.js", "java"],
-    skills: ["Backend Developer", "Python", "Node.js", "SQL", "PostgreSQL", "Docker", "Git"]
-  },
   {
     id: "fullstack",
     label: "Fullstack",
-    keywords: ["développeur fullstack", "développeur web", "react", "node.js"],
+    keywords: ["développeur fullstack", "développeur web", "concepteur développeur"],
     skills: ["Fullstack Developer", "React", "Node.js", "TypeScript", "JavaScript", "SQL", "Git"]
+  },
+  {
+    id: "backend",
+    label: "Backend",
+    keywords: ["développeur backend", "développeur python", "ingénieur backend"],
+    skills: ["Backend Developer", "Python", "Node.js", "SQL", "PostgreSQL", "Docker", "Git"]
   },
   {
     id: "frontend",
     label: "Frontend",
-    keywords: ["développeur frontend", "react", "vue.js", "javascript"],
+    keywords: ["développeur frontend", "développeur react", "développeur web"],
     skills: ["Frontend Developer", "React", "Vue.js", "TypeScript", "JavaScript", "Git"]
   },
   {
     id: "data",
     label: "Data",
-    keywords: ["data analyst", "data engineer", "python", "sql"],
+    keywords: ["data analyst", "data engineer", "ingénieur données"],
     skills: ["Data Analyst", "Python", "SQL", "PostgreSQL", "Machine Learning", "Git"]
   },
   {
@@ -38,7 +117,7 @@ const SKILL_PRESETS = [
   {
     id: "marketing",
     label: "Marketing",
-    keywords: ["marketing digital", "communication", "growth marketing"],
+    keywords: ["marketing digital", "chargé de communication", "growth marketing"],
     skills: ["Marketing", "Communication", "SEO", "Growth Hacking", "Community Manager"]
   }
 ];
@@ -49,7 +128,7 @@ function App() {
   const [expandKeywords, setExpandKeywords] = useState(false);
   const [location, setLocation] = useState("Paris");
   const [maxAge, setMaxAge] = useState(2);
-  const [recipientEmail, setRecipientEmail] = useState("igor.luna.it@gmail.com");
+  const [recipientEmail, setRecipientEmail] = useState("");
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
@@ -66,6 +145,11 @@ function App() {
   const [isSkillsSheetOpen, setIsSkillsSheetOpen] = useState(false);
   const [isExcludedPopoverOpen, setIsExcludedPopoverOpen] = useState(false);
   const [openMenuJobUrl, setOpenMenuJobUrl] = useState(null);
+
+  // Modal focus trap refs for WCAG compliance
+  const skillsModalRef = useRef(null);
+  const excludedModalRef = useRef(null);
+  const lastActiveElementRef = useRef(null);
 
   // CV & Skills state
   const [cvSkills, setCvSkills] = useState(() => {
@@ -137,6 +221,52 @@ function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isSkillsSheetOpen, isExcludedPopoverOpen, openMenuJobUrl, showConfirmClear]);
 
+  // Accessible Modal Focus Trapping & Restoration (WCAG 2.1 AA)
+  useEffect(() => {
+    if (isSkillsSheetOpen || isExcludedPopoverOpen) {
+      lastActiveElementRef.current = document.activeElement;
+      const targetModal = isSkillsSheetOpen ? skillsModalRef.current : excludedModalRef.current;
+      if (targetModal) {
+        const focusable = targetModal.querySelectorAll('button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])');
+        if (focusable.length > 0) {
+          focusable[0].focus();
+        }
+      }
+    } else if (lastActiveElementRef.current) {
+      lastActiveElementRef.current.focus?.();
+    }
+  }, [isSkillsSheetOpen, isExcludedPopoverOpen]);
+
+  // Trap Tab key inside active modal dialog
+  useEffect(() => {
+    const handleTabTrap = (e) => {
+      if (e.key !== "Tab") return;
+      const activeModal = isSkillsSheetOpen ? skillsModalRef.current : isExcludedPopoverOpen ? excludedModalRef.current : null;
+      if (!activeModal) return;
+
+      const focusable = activeModal.querySelectorAll('button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])');
+      if (focusable.length === 0) return;
+
+      const firstEl = focusable[0];
+      const lastEl = focusable[focusable.length - 1];
+
+      if (e.shiftKey) {
+        if (document.activeElement === firstEl) {
+          e.preventDefault();
+          lastEl.focus();
+        }
+      } else {
+        if (document.activeElement === lastEl) {
+          e.preventDefault();
+          firstEl.focus();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleTabTrap);
+    return () => window.removeEventListener("keydown", handleTabTrap);
+  }, [isSkillsSheetOpen, isExcludedPopoverOpen]);
+
   // Close open row menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -189,7 +319,7 @@ function App() {
       try {
         unlisten = await listen("new-jobs-auto-scraped", () => {
           fetchSavedJobs();
-          setStatusMessage("New job offers found in background and saved!");
+          setStatusMessage("New job offers found in background and saved.");
         });
       } catch (err) {
         console.error("Failed to set up event listener:", err);
@@ -262,7 +392,7 @@ function App() {
       const val = ignoreInput.trim();
       if (!ignoreList.some(item => item.toLowerCase() === val.toLowerCase())) {
         setIgnoreList([...ignoreList, val]);
-        setStatusMessage(`Added "${val}" to ignore list.`);
+        setStatusMessage(`Added "${val}" to exclude list.`);
       }
       setIgnoreInput("");
     }
@@ -271,7 +401,7 @@ function App() {
   const removeIgnoreItem = (indexToRemove) => {
     const removed = ignoreList[indexToRemove];
     setIgnoreList(ignoreList.filter((_, index) => index !== indexToRemove));
-    setStatusMessage(`Removed "${removed}" from ignore list.`);
+    setStatusMessage(`Removed "${removed}" from exclude list.`);
   };
 
   const handleIgnoreCompany = (companyName) => {
@@ -279,7 +409,7 @@ function App() {
     const trimmed = companyName.trim();
     if (!ignoreList.some(item => item.toLowerCase() === trimmed.toLowerCase())) {
       setIgnoreList([...ignoreList, trimmed]);
-      setStatusMessage(`Added "${trimmed}" to ignore list.`);
+      setStatusMessage(`Added "${trimmed}" to exclude list.`);
     }
     setOpenMenuJobUrl(null);
   };
@@ -299,7 +429,7 @@ function App() {
         maxAge: parseInt(maxAge),
         contractType
       });
-      setStatusMessage(`Scan complete! Found ${newJobs.length} new offer(s).`);
+      setStatusMessage(`Scan complete. Found ${newJobs.length} new offer(s).`);
       await fetchSavedJobs();
     } catch (error) {
       setStatusMessage(`Error: ${error}`);
@@ -328,7 +458,7 @@ function App() {
     setStatusMessage("Drafting email in Apple Mail...");
     try {
       await invoke("draft_all_offers", { recipient: recipientEmail });
-      setStatusMessage(`Draft created in Apple Mail with ${jobs.length} offers!`);
+      setStatusMessage(`Draft created in Apple Mail with ${jobs.length} offers.`);
     } catch (error) {
       console.error("Failed to draft email via AppleScript:", error);
       setStatusMessage("Apple Mail draft failed, opening default mail client...");
@@ -381,14 +511,14 @@ function App() {
 
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const bytes = Array.from(new Uint8Array(arrayBuffer));
+      const bytes = new Uint8Array(arrayBuffer);
       const extractedSkills = await invoke("parse_cv_bytes", { bytes });
       
       setCvSkills(extractedSkills);
       setLastExtractedSkills(extractedSkills);
       setSelectedPresetId(null);
       if (extractedSkills.length > 0) {
-        setStatusMessage(`CV Parsed! Found ${extractedSkills.length} skills.`);
+        setStatusMessage(`CV Parsed. Found ${extractedSkills.length} skills.`);
       } else {
         setStatusMessage("CV Parsed, but no matching skills found. Pick a preset or add manually.");
       }
@@ -427,22 +557,49 @@ function App() {
 
   const handleSyncSkillsToKeywords = () => {
     if (cvSkills.length === 0) {
-      setStatusMessage("No CV skills to sync. Upload a CV first!");
+      setStatusMessage("No CV skills to sync. Upload a CV first.");
       return;
     }
-    const newKeywords = Array.from(new Set([...keywords, ...cvSkills]));
-    setKeywords(newKeywords);
-    setStatusMessage("Search keywords updated with your skills!");
+    // Only extract role-oriented titles as search targets to avoid flooding boards with tool queries
+    const roleKeywords = cvSkills
+      .filter(s => /developer|développeur|engineer|ingénieur|fullstack|frontend|backend|data|devops|architecte|consultant/i.test(s))
+      .map(s => {
+        const lower = s.toLowerCase();
+        if (lower.includes("fullstack")) return "développeur fullstack";
+        if (lower.includes("frontend")) return "développeur frontend";
+        if (lower.includes("backend")) return "développeur backend";
+        if (lower.includes("data analyst")) return "data analyst";
+        if (lower.includes("data engineer")) return "data engineer";
+        return lower;
+      });
+
+    const fallback = roleKeywords.length > 0 ? roleKeywords : ["développeur fullstack", "développeur web"];
+    const merged = Array.from(new Set([...keywords, ...fallback]));
+    setKeywords(merged);
+    setStatusMessage("Search target roles updated.");
     setIsSkillsSheetOpen(false);
   };
 
-  const handleReplaceKeywordsWithSkills = () => {
+  const handleApplyRoleKeywords = () => {
     if (cvSkills.length === 0) {
-      setStatusMessage("No CV skills to sync. Upload a CV first!");
+      setStatusMessage("No CV skills to sync. Upload a CV first.");
       return;
     }
-    setKeywords([...cvSkills]);
-    setStatusMessage(`Keywords replaced with ${cvSkills.length} skills!`);
+    const roleKeywords = cvSkills
+      .filter(s => /developer|développeur|engineer|ingénieur|fullstack|frontend|backend|data|devops|architecte|consultant/i.test(s))
+      .map(s => {
+        const lower = s.toLowerCase();
+        if (lower.includes("fullstack")) return "développeur fullstack";
+        if (lower.includes("frontend")) return "développeur frontend";
+        if (lower.includes("backend")) return "développeur backend";
+        if (lower.includes("data analyst")) return "data analyst";
+        if (lower.includes("data engineer")) return "data engineer";
+        return lower;
+      });
+
+    const targetRoles = roleKeywords.length > 0 ? Array.from(new Set(roleKeywords)) : ["développeur fullstack", "développeur web"];
+    setKeywords(targetRoles);
+    setStatusMessage(`Search targets set to: ${targetRoles.join(", ")}`);
     setIsSkillsSheetOpen(false);
   };
 
@@ -472,16 +629,15 @@ function App() {
     setCvSkills(cvSkills.filter(s => s !== skillToRemove));
   };
 
-  // Unified Orange "Reset" Button at sidebar bottom
   const handleUnifiedReset = () => {
-    setKeywords(["développeur fullstack", "développeur web", "react", "node.js"]);
+    setKeywords(["développeur fullstack", "développeur web"]);
     const defaultPreset = SKILL_PRESETS.find(p => p.id === "fullstack");
     if (defaultPreset) {
       setCvSkills([...defaultPreset.skills]);
       setSelectedPresetId("fullstack");
     }
-    setIgnoreList(["Studi CFA", "Studi"]);
-    setStatusMessage("Search configuration reset to defaults.");
+    setIgnoreList(["Studi CFA", "Studi", "BTS", "School", "ISCOD"]);
+    setStatusMessage("Search targets and profile reset to fullstack defaults.");
   };
 
   const escapeRegExp = (string) => {
@@ -501,49 +657,97 @@ function App() {
   const calculateMatchScore = (jobTitle, companyName) => {
     if (!jobTitle) return { score: 0, matching: [] };
     const textToSearch = `${jobTitle} ${companyName}`.toLowerCase();
+
+    // 1. Negative filtering: if looking for software/tech, reject non-tech trades
+    const isTechProfile = cvSkills.some(s => 
+      /react|python|fullstack|frontend|backend|developer|développeur|software|docker|node|sql|data|devops/i.test(s)
+    );
+    if (isTechProfile) {
+      const irrelevantTrades = [
+        "recouvrement", "immobilier", "foncier", "vendeur", "conseiller de vente", 
+        "serveur", "cuisine", "comptable", "comptabilité", "paie", "hôtesse", "aide soignant",
+        "juriste", "avocat", "assurances", "prospection foncière", "prospecteur foncier"
+      ];
+      if (irrelevantTrades.some(t => textToSearch.includes(t))) {
+        return { score: 0, matching: [] };
+      }
+    }
+
     const matching = [];
 
+    // 2. Concrete Skill & Tech matches from profile
     if (cvSkills && cvSkills.length > 0) {
       cvSkills.forEach(skill => {
         const skillLower = skill.toLowerCase().trim();
         if (!skillLower) return;
 
+        let isMatch = false;
         if (skillLower === "node.js" || skillLower === "nodejs" || skillLower === "node") {
-          if (matchesWholeWordOrPhrase(textToSearch, "node") || matchesWholeWordOrPhrase(textToSearch, "nodejs") || matchesWholeWordOrPhrase(textToSearch, "node.js")) {
-            matching.push(skill);
-          }
+          isMatch = matchesWholeWordOrPhrase(textToSearch, "node") || matchesWholeWordOrPhrase(textToSearch, "nodejs") || matchesWholeWordOrPhrase(textToSearch, "node.js");
         } else if (skillLower === "fullstack" || skillLower === "full stack") {
-          if (textToSearch.includes("fullstack") || textToSearch.includes("full stack")) {
-            matching.push(skill);
-          }
+          isMatch = textToSearch.includes("fullstack") || textToSearch.includes("full stack");
+        } else if (skillLower === "frontend" || skillLower === "front end") {
+          isMatch = textToSearch.includes("frontend") || textToSearch.includes("front end");
+        } else if (skillLower === "backend" || skillLower === "back end") {
+          isMatch = textToSearch.includes("backend") || textToSearch.includes("back end");
+        } else if (skillLower === "c++") {
+          isMatch = /(?:^|[^a-z0-9+#])c\+\+(?:$|[^a-z0-9+#])/i.test(textToSearch);
+        } else if (skillLower === "c#") {
+          isMatch = /(?:^|[^a-z0-9+#])c#(?:$|[^a-z0-9+#])/i.test(textToSearch);
+        } else if (skillLower === ".net") {
+          isMatch = /(?:^|[^a-z0-9+#])\.net(?:$|[^a-z0-9+#])/i.test(textToSearch);
+        } else if (skillLower === "vue.js" || skillLower === "vue") {
+          isMatch = matchesWholeWordOrPhrase(textToSearch, "vue.js") || matchesWholeWordOrPhrase(textToSearch, "vuejs") || matchesWholeWordOrPhrase(textToSearch, "vue 3") || matchesWholeWordOrPhrase(textToSearch, "vue 2");
         } else {
-          if (matchesWholeWordOrPhrase(textToSearch, skillLower)) {
-            matching.push(skill);
-          }
+          isMatch = matchesWholeWordOrPhrase(textToSearch, skillLower);
+        }
+
+        if (isMatch && !matching.includes(skill)) {
+          matching.push(skill);
         }
       });
     }
 
-    let keywordMatches = [];
-    const genericTerms = ["alternance", "stage", "cdd", "cdi", "emploi", "job", "de", "en", "h/f", "f/h", "à", "dans", "le", "la", "les"];
+    // 3. Match against target search role keywords
+    const genericTerms = ["alternance", "stage", "cdd", "cdi", "emploi", "job", "de", "en", "h/f", "f/h", "à", "dans", "le", "la", "les", "junior"];
     keywords.forEach(kw => {
       const kwLower = kw.toLowerCase().trim();
       if (kwLower && !genericTerms.includes(kwLower) && matchesWholeWordOrPhrase(textToSearch, kwLower)) {
-        keywordMatches.push(kw);
+        if (!matching.includes(kw)) {
+          matching.push(kw);
+        }
       }
     });
 
-    const allMatches = Array.from(new Set([...matching, ...keywordMatches]));
-
-    if (allMatches.length === 0) {
+    if (matching.length === 0) {
       return { score: 0, matching: [] };
     }
 
-    const baseScore = 50;
-    const bonusPerMatch = 20;
-    const score = Math.min(100, baseScore + (allMatches.length - 1) * bonusPerMatch);
-    
-    return { score, matching: allMatches };
+    // 4. Calibrated scoring logic:
+    // Broad generic words only ("développeur", "developer", "software", "ingénieur") = 25% base
+    // Each specific tech or role match (e.g. "React", "Node.js", "Fullstack") = +30%
+    const broadWords = ["développeur", "developer", "ingénieur", "software", "informatique", "web"];
+    let specificCount = 0;
+    let hasBroadOnly = true;
+
+    matching.forEach(m => {
+      const ml = m.toLowerCase();
+      if (broadWords.includes(ml)) {
+        // generic category
+      } else {
+        hasBroadOnly = false;
+        specificCount++;
+      }
+    });
+
+    let score = 0;
+    if (hasBroadOnly) {
+      score = 25; // Broad role alignment
+    } else {
+      score = Math.min(100, 35 + (specificCount - 1) * 25 + (matching.length > specificCount ? 15 : 0));
+    }
+
+    return { score, matching };
   };
 
   const isMatchingContractType = (title, currentContractType) => {
@@ -560,12 +764,18 @@ function App() {
       titleLower.includes("full-time") || 
       titleLower.includes("fulltime") || 
       titleLower.includes("temps plein")) && !isAlternanceTitle;
+
+    const isExplicitStage = (titleLower.includes("stage") || 
+      titleLower.includes("stagiaire") || 
+      titleLower.includes("internship") || 
+      titleLower.includes("intern ") || 
+      titleLower.endsWith("intern")) && !isAlternanceTitle;
       
     if (currentContractType === "alternance") {
-      if (isExplicitFulltime) return false;
+      if (isExplicitFulltime || isExplicitStage) return false;
       return true;
     } else if (currentContractType === "fulltime") {
-      if (isAlternanceTitle || titleLower.includes("stage") || titleLower.includes("internship")) return false;
+      if (isAlternanceTitle || isExplicitStage) return false;
       return true;
     }
     return true;
@@ -615,7 +825,7 @@ function App() {
 
   return (
     <div className="macos-window">
-      {/* 52px macOS Title Bar */}
+      {/* Title Bar */}
       <header className="macos-titlebar">
         <div className="titlebar-left">
           <span className="app-title">Alternance Finder</span>
@@ -630,7 +840,7 @@ function App() {
             Share all
           </button>
           {showConfirmClear ? (
-            <div style={{ display: "inline-flex", gap: "6px", alignItems: "center" }}>
+            <div style={{ display: "inline-flex", gap: "8px", alignItems: "center" }}>
               <span style={{ fontSize: "12px", color: "var(--danger)" }}>Clear all?</span>
               <button onClick={handleClearOffers} className="btn-mac-secondary" style={{ color: "var(--danger)" }}>Yes</button>
               <button onClick={() => setShowConfirmClear(false)} className="btn-mac-secondary">No</button>
@@ -647,16 +857,13 @@ function App() {
         </div>
       </header>
 
-      {/* Main Window Body: 300px Sidebar + Content */}
+      {/* Main Window Body: 320px Sidebar + Content Feed */}
       <div className="macos-body">
-        {/* Left Sidebar (300px) */}
+        {/* Left Sidebar */}
         <aside className="macos-sidebar">
-          {/* 1. Search field (30px) */}
+          {/* 1. Search Box */}
           <div className="sidebar-search-box">
-            <svg className="search-magnifier-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <circle cx="7" cy="7" r="4.5" />
-              <line x1="10.5" y1="10.5" x2="14" y2="14" />
-            </svg>
+            <SearchIcon className="search-magnifier-icon" />
             <input 
               type="text" 
               value={keywordInput} 
@@ -668,7 +875,7 @@ function App() {
             />
           </div>
 
-          {/* 2. Keyword chips (24px pills) */}
+          {/* 2. Keyword Chips */}
           {keywords.length > 0 && (
             <div className="keyword-chips-wrap">
               {visibleKeywords.map((kw, index) => (
@@ -679,7 +886,7 @@ function App() {
                     className="chip-remove-btn"
                     aria-label={`Remove keyword ${kw}`}
                   >
-                    ×
+                    <CloseIcon />
                   </button>
                 </span>
               ))}
@@ -725,7 +932,7 @@ function App() {
                     <span>Analyzing...</span>
                   ) : cvFileName ? (
                     <>
-                      <span title={cvFileName} style={{ maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <span title={cvFileName} style={{ maxWidth: "150px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {cvFileName}
                       </span>
                       <button 
@@ -734,13 +941,13 @@ function App() {
                         aria-label="Remove CV file"
                         style={{ marginLeft: "4px" }}
                       >
-                        ×
+                        <CloseIcon />
                       </button>
                     </>
                   ) : (
                     <span style={{ color: "var(--accent)" }}>Upload PDF</span>
                   )}
-                  <span className="row-chevron">›</span>
+                  <span className="row-chevron"><ChevronRightIcon /></span>
                 </div>
               </div>
 
@@ -752,7 +959,7 @@ function App() {
                 <span className="row-label">Skills</span>
                 <div className="row-content-right">
                   <span>{cvSkills.length} active</span>
-                  <span className="row-chevron">›</span>
+                  <span className="row-chevron"><ChevronRightIcon /></span>
                 </div>
               </div>
             </div>
@@ -795,7 +1002,7 @@ function App() {
                       <option value={14}>14 days</option>
                       <option value={30}>30 days</option>
                     </select>
-                    <span className="mac-select-arrow">↕</span>
+                    <span className="mac-select-arrow"><CaretUpDownIcon /></span>
                   </div>
                 </div>
               </div>
@@ -812,10 +1019,10 @@ function App() {
                       aria-label="Contract type"
                     >
                       <option value="alternance">Alternance</option>
-                      <option value="fulltime">Full-time</option>
+                      <option value="fulltime">Full time</option>
                       <option value="all">All</option>
                     </select>
-                    <span className="mac-select-arrow">↕</span>
+                    <span className="mac-select-arrow"><CaretUpDownIcon /></span>
                   </div>
                 </div>
               </div>
@@ -834,7 +1041,7 @@ function App() {
                 <span className="row-label">Excluded</span>
                 <div className="row-content-right">
                   <span>{ignoreList.length} active</span>
-                  <span className="row-chevron">›</span>
+                  <span className="row-chevron"><ChevronRightIcon /></span>
                 </div>
               </div>
 
@@ -855,16 +1062,18 @@ function App() {
             </div>
           </div>
 
-          {/* Automation Section (Preserved & Styled) */}
+          {/* Automation Section */}
           <div className="grouped-section">
             <span className="section-label">Automation</span>
             <div className="grouped-list">
               <div className="grouped-row">
-                <span className="row-label">Auto-scrape</span>
+                <span className="row-label">Auto scrape</span>
                 <div className="row-content-right">
-                  <label className="mac-switch" aria-label="Toggle auto scrape">
+                  <label className="mac-switch">
                     <input 
                       type="checkbox" 
+                      id="toggle-auto-scrape"
+                      aria-label="Toggle auto scrape"
                       checked={autoScrape} 
                       onChange={(e) => setAutoScrape(e.target.checked)} 
                     />
@@ -889,25 +1098,32 @@ function App() {
                       <option value="12">Every 12h</option>
                       <option value="24">Every 24h</option>
                     </select>
-                    <span className="mac-select-arrow">↕</span>
+                    <span className="mac-select-arrow"><CaretUpDownIcon /></span>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* 6. Sidebar Footer: Start Search + Orange Reset Button */}
+          {/* Sidebar Footer */}
           <div className="sidebar-footer">
             <button 
               onClick={handleRunScraper} 
               disabled={loading}
               className="btn-mac-primary sidebar-start-btn"
             >
-              {loading ? "Searching..." : "Start Search"}
+              {loading ? "Searching..." : "Start search"}
             </button>
 
             {statusMessage && (
-              <span className="sidebar-status-banner">{statusMessage}</span>
+              <span 
+                className="sidebar-status-banner"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                {statusMessage}
+              </span>
             )}
 
             <button 
@@ -933,6 +1149,8 @@ function App() {
                 <span className="mac-switch">
                   <input 
                     type="checkbox" 
+                    id="toggle-hide-zero"
+                    aria-label="Hide 0% matches"
                     checked={hideZeroMatches} 
                     onChange={(e) => setHideZeroMatches(e.target.checked)} 
                   />
@@ -952,19 +1170,34 @@ function App() {
                     <option value="date">Date added</option>
                     <option value="match">Match score</option>
                   </select>
-                  <span className="mac-select-arrow">↕</span>
+                  <span className="mac-select-arrow"><CaretUpDownIcon /></span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="offers-list-container">
-            {filteredJobs.length === 0 ? (
+          <div 
+            className="offers-list-container"
+            role="feed"
+            aria-busy={loading}
+            aria-label="Job opportunities feed"
+          >
+            {loading ? (
+              <>
+                <SkeletonOfferRow />
+                <SkeletonOfferRow />
+                <SkeletonOfferRow />
+                <SkeletonOfferRow />
+              </>
+            ) : filteredJobs.length === 0 ? (
               <div className="empty-offers-state">
-                <span>No offers found.</span>
-                <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-                  Try broadening your keywords or click "Start Search".
-                </span>
+                <div className="empty-icon-wrap">
+                  <BriefcaseIcon />
+                </div>
+                <div className="empty-title">No offers found</div>
+                <div className="empty-desc">
+                  Try broadening your keywords or click "Start search" to fetch new opportunities.
+                </div>
               </div>
             ) : (
               filteredJobs.map((job, index) => {
@@ -976,7 +1209,7 @@ function App() {
                 const isMenuOpen = openMenuJobUrl === job.url;
 
                 return (
-                  <div key={index} className={`offer-row ${hasMatch ? 'offer-row-matched' : ''}`}>
+                  <article key={index} className={`offer-row ${hasMatch ? 'offer-row-matched' : ''}`} aria-label={job.title}>
                     <div className="offer-left-details">
                       <div className="offer-title-wrap">
                         <h2 className="offer-title">{job.title}</h2>
@@ -997,7 +1230,8 @@ function App() {
                         onClick={() => handleViewOffer(job.url)} 
                         className="btn-view-offer"
                       >
-                        View
+                        <span>View</span>
+                        <ArrowUpRightIcon />
                       </button>
 
                       <div style={{ position: "relative" }}>
@@ -1010,7 +1244,7 @@ function App() {
                           aria-label="More actions"
                           aria-expanded={isMenuOpen}
                         >
-                          ···
+                          <DotsThreeIcon />
                         </button>
 
                         {isMenuOpen && (
@@ -1043,7 +1277,7 @@ function App() {
                         )}
                       </div>
                     </div>
-                  </div>
+                  </article>
                 );
               })
             )}
@@ -1051,13 +1285,20 @@ function App() {
         </main>
       </div>
 
-      {/* SKILLS SHEET (480px, Dimmed Backdrop) */}
+      {/* SKILLS SHEET (Accessible Dialog with Focus Trap) */}
       {isSkillsSheetOpen && (
         <div className="mac-modal-backdrop" onClick={() => setIsSkillsSheetOpen(false)}>
-          <div className="mac-sheet-card" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+          <div 
+            ref={skillsModalRef}
+            className="mac-sheet-card" 
+            onClick={(e) => e.stopPropagation()} 
+            role="dialog" 
+            aria-modal="true"
+            aria-labelledby="skills-sheet-heading"
+          >
             <div className="sheet-header">
               <div className="sheet-title-group">
-                <h2>Skills</h2>
+                <h2 id="skills-sheet-heading">Skills</h2>
                 <div className="sheet-caption">
                   {cvSkills.length} active{cvFileName ? ", taken from your CV" : ", from active profile"}
                 </div>
@@ -1067,7 +1308,7 @@ function App() {
                 className="sheet-close-btn"
                 aria-label="Close sheet"
               >
-                ×
+                <CloseIcon />
               </button>
             </div>
 
@@ -1106,7 +1347,7 @@ function App() {
                         className="chip-remove-btn"
                         aria-label={`Remove skill ${skill}`}
                       >
-                        ×
+                        <CloseIcon />
                       </button>
                     </span>
                   ))
@@ -1141,16 +1382,17 @@ function App() {
               </div>
               <div className="sheet-footer-right">
                 <button 
-                  onClick={handleReplaceKeywordsWithSkills} 
+                  onClick={handleApplyRoleKeywords} 
                   className="btn-mac-secondary"
+                  title="Update search targets based on your profile roles"
                 >
-                  Replace keywords
+                  Set search roles
                 </button>
                 <button 
-                  onClick={handleSyncSkillsToKeywords} 
+                  onClick={() => setIsSkillsSheetOpen(false)} 
                   className="btn-mac-primary"
                 >
-                  Add to keywords
+                  Done
                 </button>
               </div>
             </div>
@@ -1158,13 +1400,20 @@ function App() {
         </div>
       )}
 
-      {/* EXCLUDED POPOVER (Modal / Popover) */}
+      {/* EXCLUDED POPOVER (Accessible Dialog with Focus Trap) */}
       {isExcludedPopoverOpen && (
         <div className="mac-modal-backdrop" onClick={() => setIsExcludedPopoverOpen(false)}>
-          <div className="popover-card" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+          <div 
+            ref={excludedModalRef}
+            className="popover-card" 
+            onClick={(e) => e.stopPropagation()} 
+            role="dialog" 
+            aria-modal="true"
+            aria-labelledby="excluded-popover-heading"
+          >
             <div className="sheet-header">
               <div className="sheet-title-group">
-                <h2 style={{ fontSize: "16px", margin: 0 }}>Excluded Companies & Schools</h2>
+                <h2 id="excluded-popover-heading" style={{ fontSize: "18px", margin: 0 }}>Excluded Companies & Schools</h2>
                 <div className="sheet-caption">
                   {ignoreList.length} excluded from results
                 </div>
@@ -1174,7 +1423,7 @@ function App() {
                 className="sheet-close-btn"
                 aria-label="Close popover"
               >
-                ×
+                <CloseIcon />
               </button>
             </div>
 
@@ -1192,7 +1441,7 @@ function App() {
                       className="chip-remove-btn"
                       aria-label={`Remove excluded ${item}`}
                     >
-                      ×
+                      <CloseIcon />
                     </button>
                   </span>
                 ))
@@ -1225,12 +1474,12 @@ function App() {
               </button>
             </div>
 
-            <div className="sheet-footer" style={{ borderTop: "1px solid var(--hairline)", paddingTop: "8px" }}>
+            <div className="sheet-footer" style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "12px" }}>
               <button 
                 onClick={() => { setIgnoreList(["Studi CFA", "Studi"]); setStatusMessage("Ignore list reset to default."); }} 
                 className="btn-text-orange"
               >
-                Reset Defaults
+                Reset defaults
               </button>
               <button 
                 onClick={() => setIsExcludedPopoverOpen(false)} 
@@ -1263,14 +1512,14 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ padding: "2rem", color: "var(--danger)", fontFamily: "var(--font-family)" }}>
-          <h2>Application Error</h2>
+        <div style={{ padding: "2rem", color: "var(--danger)", fontFamily: "var(--font-sans)" }}>
+          <h2>Application error</h2>
           <p>Alternance Finder encountered an error:</p>
-          <pre style={{ background: "var(--grouped-surface)", color: "var(--danger)", padding: "1rem", borderRadius: "8px", overflow: "auto" }}>
+          <pre style={{ background: "var(--surface-card)", color: "var(--danger)", padding: "1rem", borderRadius: "8px", overflow: "auto" }}>
             {this.state.error?.toString()}
           </pre>
           <button onClick={() => window.location.reload()} className="btn-mac-primary" style={{ marginTop: "1rem" }}>
-            Reload App
+            Reload app
           </button>
         </div>
       );

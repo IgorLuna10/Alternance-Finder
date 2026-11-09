@@ -1,6 +1,6 @@
 {
   "productName": "Alternance Finder",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "identifier": "com.alternance.finder",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -16,7 +16,7 @@
         "height": 750,
         "minWidth": 900,
         "minHeight": 600,
-        "devtools": true
+        "devtools": false
       }
     ]
   },

@@ -195,9 +195,12 @@ pub async fn scrape_wttj(keywords: &[String], location: &str, max_age: i32, cont
         let mut payload = serde_json::json!({
             "query": effective_kw,
             "hitsPerPage": 20,
-            "aroundLatLng": "48.8566,2.3522",
-            "aroundRadius": 30000
         });
+
+        if let Some((lat, lon)) = get_coordinates_for_city(location) {
+            payload.as_object_mut().unwrap().insert("aroundLatLng".to_string(), serde_json::Value::String(format!("{},{}", lat, lon)));
+            payload.as_object_mut().unwrap().insert("aroundRadius".to_string(), serde_json::Value::Number(serde_json::Number::from(40000)));
+        }
         
         if contract_type == "alternance" {
             payload.as_object_mut().unwrap().insert("filters".to_string(), serde_json::Value::String("contract_type:apprenticeship OR contract_type:professionnalisation".to_string()));
@@ -267,6 +270,14 @@ pub async fn scrape_wttj(keywords: &[String], location: &str, max_age: i32, cont
             }
 
             let name = hit.get("name").and_then(|v| v.as_str()).unwrap_or(kw);
+            if contract_type == "alternance" {
+                let nl = name.to_lowercase();
+                let is_stage = (nl.contains("stage") || nl.contains("stagiaire") || nl.contains("internship") || nl.contains("intern\u{00a0}") || nl.ends_with("intern"))
+                    && !nl.contains("alternan") && !nl.contains("apprenti");
+                if is_stage {
+                    continue;
+                }
+            }
             let org = hit.get("organization");
             let comp_name = org.and_then(|o| o.get("name")).and_then(|v| v.as_str()).unwrap_or("");
             let slug_org = org.and_then(|o| o.get("slug")).and_then(|v| v.as_str()).unwrap_or("");
@@ -373,6 +384,16 @@ pub async fn scrape_hellowork(keywords: &[String], location: &str, max_age: i32,
                 Some(el) => el.text().collect::<Vec<_>>().join(" ").trim().to_string(),
                 None => kw.to_string(),
             };
+
+            // Reject explicit internships when searching for alternance
+            if contract_type == "alternance" {
+                let tl = title.to_lowercase();
+                let is_stage = (tl.contains("stage") || tl.contains("stagiaire") || tl.contains("internship") || tl.contains("intern\u{00a0}") || tl.ends_with("intern"))
+                    && !tl.contains("alternan") && !tl.contains("apprenti");
+                if is_stage {
+                    continue;
+                }
+            }
 
             let company_el = card.select(&company_selector).next();
             let company = match company_el {
@@ -483,6 +504,16 @@ pub async fn scrape_jobijoba(keywords: &[String], location: &str, max_age: i32, 
                 Some(el) => el.text().collect::<Vec<_>>().join(" ").trim().to_string(),
                 None => kw.to_string(),
             };
+
+            // Reject explicit internships when searching for alternance
+            if contract_type == "alternance" {
+                let tl = title.to_lowercase();
+                let is_stage = (tl.contains("stage") || tl.contains("stagiaire") || tl.contains("internship") || tl.contains("intern\u{00a0}") || tl.ends_with("intern"))
+                    && !tl.contains("alternan") && !tl.contains("apprenti");
+                if is_stage {
+                    continue;
+                }
+            }
             let title = if title.is_empty() { kw.to_string() } else { title };
             let title = if title.len() > 120 { title[..120].to_string() } else { title };
 
@@ -539,7 +570,7 @@ pub async fn scrape_linkedin(keywords: &[String], location: &str, max_age: i32, 
         };
 
         let contract_param = if contract_type == "alternance" {
-            "&f_JT=I"
+            "&f_JT=A"
         } else if contract_type == "fulltime" {
             "&f_JT=F"
         } else {
@@ -600,6 +631,16 @@ pub async fn scrape_linkedin(keywords: &[String], location: &str, max_age: i32, 
                 None => kw.to_string(),
             };
 
+            // Reject explicit internships when searching for alternance
+            if contract_type == "alternance" {
+                let tl = title.to_lowercase();
+                let is_stage = (tl.contains("stage") || tl.contains("stagiaire") || tl.contains("internship") || tl.contains("intern\u{00a0}") || tl.ends_with("intern"))
+                    && !tl.contains("alternan") && !tl.contains("apprenti");
+                if is_stage {
+                    continue;
+                }
+            }
+
             let company_el = card.select(&company_selector).next();
             let company = match company_el {
                 Some(el) => el.text().collect::<Vec<_>>().join(" ").trim().to_string(),
@@ -658,7 +699,7 @@ pub async fn scrape_indeed(keywords: &[String], location: &str, max_age: i32, co
         };
 
         let contract_param = if contract_type == "alternance" {
-            "&jt=internship"
+            "&jt=apprenticeship"
         } else if contract_type == "fulltime" {
             "&jt=permanent"
         } else {
@@ -725,6 +766,16 @@ pub async fn scrape_indeed(keywords: &[String], location: &str, max_age: i32, co
 
             let title = link_el.text().collect::<Vec<_>>().join(" ").trim().to_string();
             let title = if title.is_empty() { kw.to_string() } else { title };
+
+            // Reject explicit internships when searching for alternance
+            if contract_type == "alternance" {
+                let tl = title.to_lowercase();
+                let is_stage = (tl.contains("stage") || tl.contains("stagiaire") || tl.contains("internship") || tl.contains("intern\u{00a0}") || tl.ends_with("intern"))
+                    && !tl.contains("alternan") && !tl.contains("apprenti");
+                if is_stage {
+                    continue;
+                }
+            }
 
             let company_el = card.select(&company_selector).next();
             let company = match company_el {
@@ -980,15 +1031,32 @@ pub async fn scrape_lba(keywords: &[String], location: &str, max_age: i32, contr
 }
 
 pub async fn scrape_all(keywords_str: &str, location: &str, max_age: i32, contract_type: &str) -> Vec<Job> {
-    let keywords: Vec<String> = keywords_str
+    let raw_keywords: Vec<String> = keywords_str
         .split(',')
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect();
 
-    if keywords.is_empty() {
+    if raw_keywords.is_empty() {
         return Vec::new();
     }
+
+    // Qualify raw technical tools with "développeur" so boards don't fall back to random sponsored jobs
+    let tech_tools = [
+        "react", "vue", "angular", "node", "python", "java", "php", "c++", "c#", ".net", 
+        "rust", "go", "sql", "postgres", "postgresql", "docker", "kubernetes", "aws", "git", "mongodb"
+    ];
+    let keywords: Vec<String> = raw_keywords.into_iter().map(|kw| {
+        let kw_lower = kw.to_lowercase();
+        let has_role = kw_lower.contains("dév") || kw_lower.contains("dev") || kw_lower.contains("ing") 
+            || kw_lower.contains("eng") || kw_lower.contains("analyst") || kw_lower.contains("consult") 
+            || kw_lower.contains("charg") || kw_lower.contains("commercial") || kw_lower.contains("manager");
+        if !has_role && tech_tools.iter().any(|&t| kw_lower == t || kw_lower.starts_with(&format!("{} ", t))) {
+            format!("développeur {}", kw)
+        } else {
+            kw
+        }
+    }).collect();
 
     let kws = Arc::new(keywords);
     let loc = location.to_string();
@@ -1102,7 +1170,15 @@ pub fn is_matching_contract_type(title: &str, contract_type: &str) -> bool {
         && !is_alternance_title;
 
     if contract_type == "alternance" {
-        if is_explicit_fulltime {
+        let is_stage = (title_lower.contains("stage") 
+            || title_lower.contains("stagiaire") 
+            || title_lower.contains("internship") 
+            || title_lower.contains("intern\u{00a0}") 
+            || title_lower.contains("intern ")
+            || title_lower.ends_with("intern"))
+            && !is_alternance_title;
+
+        if is_stage || is_explicit_fulltime {
             return false;
         }
         return true;

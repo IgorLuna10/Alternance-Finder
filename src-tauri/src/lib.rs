@@ -3,6 +3,7 @@ use std::fs;
 use std::sync::Mutex;
 use tauri::Manager;
 use tauri::Emitter;
+use regex::Regex;
 
 mod scrapers;
 use scrapers::Job;
@@ -19,6 +20,13 @@ fn init_db(app: &tauri::AppHandle) -> SqlResult<Connection> {
     
     let db_path = app_dir.join("alternance.db");
     let conn = Connection::open(db_path)?;
+
+    // Enable Write-Ahead Logging (WAL) and set busy timeout for concurrency
+    conn.execute_batch(
+        "PRAGMA journal_mode = WAL;
+         PRAGMA synchronous = NORMAL;
+         PRAGMA busy_timeout = 5000;"
+    )?;
 
     // Create the jobs table.
     conn.execute(
@@ -45,11 +53,11 @@ fn init_db(app: &tauri::AppHandle) -> SqlResult<Connection> {
         (),
     )?;
 
-    // Insert default settings if they don't exist
+    // Insert default settings if they don't exist (no hardcoded PII)
     conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('auto_scrape', 'false')", ())?;
     conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('scrape_interval_hours', '4')", ())?;
-    conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('recipient_email', 'igor.luna.it@gmail.com')", ())?;
-    conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('keywords', 'développeur fullstack, développeur web, react, node.js')", ())?;
+    conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('recipient_email', '')", ())?;
+    conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('keywords', 'développeur fullstack, développeur web')", ())?;
     conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('location', 'Paris')", ())?;
     conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('max_age', '2')", ())?;
     conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('contract_type', 'alternance')", ())?;
@@ -164,27 +172,49 @@ fn clear_all_jobs(state: tauri::State<'_, AppState>) -> Result<(), String> {
 
 #[tauri::command]
 fn open_in_browser(url: String) -> Result<(), String> {
-    println!("Tauri backend: opening URL in browser: {}", url);
+    let trimmed = url.trim();
+    if !trimmed.starts_with("https://") && !trimmed.starts_with("http://") {
+        return Err("Security Block: Only HTTP and HTTPS protocols are permitted".to_string());
+    }
+
+    // Reject control characters and quote characters to prevent argument/command injection
+    if trimmed.chars().any(|c| c.is_control() || c == '"' || c == '\'' || c == '`' || c == '\n' || c == '\r') {
+        return Err("Security Block: Invalid characters in URL".to_string());
+    }
+
+    println!("Tauri backend: Opening validated URL in browser: {}", trimmed);
     
     #[cfg(target_os = "macos")]
     {
-        std::process::Command::new("open").arg(&url).spawn().map(|_| ()).map_err(|e| e.to_string())
+        std::process::Command::new("open")
+            .arg("--")
+            .arg(trimmed)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| e.to_string())
     }
 
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("cmd").args(["/C", "start", &url]).spawn().map(|_| ()).map_err(|e| e.to_string())
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", trimmed])
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| e.to_string())
     }
 
     #[cfg(target_os = "linux")]
     {
-        std::process::Command::new("xdg-open").arg(&url).spawn().map(|_| ()).map_err(|e| e.to_string())
+        std::process::Command::new("xdg-open")
+            .arg(trimmed)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| e.to_string())
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
-        let _ = url;
-        Err("Unsupported OS".to_string())
+        Err("Unsupported operating system".to_string())
     }
 }
 
@@ -311,10 +341,23 @@ fn delete_jobs_by_urls(state: tauri::State<'_, AppState>, urls: Vec<String>) -> 
     Ok(())
 }
 
-// Helper to create Apple Mail draft on macOS
+// Helper to create Apple Mail draft on macOS with strict input sanitization
 fn create_mail_draft(recipient: &str, subject: &str, body: &str) -> Result<(), String> {
+    let clean_recipient = recipient.trim();
+    if clean_recipient.is_empty() {
+        return Err("No recipient email configured. Please enter an email address.".to_string());
+    }
+
+    // Validate email format strictly to eliminate AppleScript injection vectors
+    let email_re = Regex::new(r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$")
+        .map_err(|e| e.to_string())?;
+    if !email_re.is_match(clean_recipient) {
+        return Err("Invalid recipient email format.".to_string());
+    }
+
     #[cfg(target_os = "macos")]
     {
+        let escaped_recipient = clean_recipient.replace('\\', "\\\\").replace('"', "\\\"");
         let escaped_body = body.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n");
         let escaped_subject = subject.replace('\\', "\\\\").replace('"', "\\\"");
         
@@ -326,7 +369,7 @@ fn create_mail_draft(recipient: &str, subject: &str, body: &str) -> Result<(), S
                     save
                 end tell
             end tell"#,
-            escaped_subject, escaped_body, recipient
+            escaped_subject, escaped_body, escaped_recipient
         );
 
         let output = std::process::Command::new("osascript")
@@ -369,7 +412,7 @@ async fn run_background_scheduler(app: tauri::AppHandle) {
                 .unwrap_or_else(|_| "4".to_string())
                 .parse()
                 .unwrap_or(4);
-            let recipient_email: String = conn.query_row("SELECT value FROM settings WHERE key = 'recipient_email'", [], |r| r.get(0)).unwrap_or_else(|_| "igor.luna.it@gmail.com".to_string());
+            let recipient_email: String = conn.query_row("SELECT value FROM settings WHERE key = 'recipient_email'", [], |r| r.get(0)).unwrap_or_default();
             (auto_scrape == "true", interval_hours, recipient_email)
         };
 
@@ -396,7 +439,7 @@ async fn run_background_scheduler(app: tauri::AppHandle) {
             
             let (keywords, location, max_age, contract_type, ignore_list) = {
                 let conn = state.db.lock().unwrap();
-                let kw: String = conn.query_row("SELECT value FROM settings WHERE key = 'keywords'", [], |r| r.get(0)).unwrap_or_else(|_| "développeur fullstack, développeur web, react, node.js".to_string());
+                let kw: String = conn.query_row("SELECT value FROM settings WHERE key = 'keywords'", [], |r| r.get(0)).unwrap_or_else(|_| "développeur fullstack, développeur web".to_string());
                 let loc: String = conn.query_row("SELECT value FROM settings WHERE key = 'location'", [], |r| r.get(0)).unwrap_or_else(|_| "Paris".to_string());
                 let age: i32 = conn.query_row("SELECT value FROM settings WHERE key = 'max_age'", [], |r| r.get(0))
                     .unwrap_or_else(|_| "2".to_string())
@@ -450,22 +493,26 @@ async fn run_background_scheduler(app: tauri::AppHandle) {
             }
 
             if !new_jobs.is_empty() {
-                println!("Tauri background: Found {} new jobs! Auto-drafting email...", new_jobs.len());
+                println!("Tauri background: Found {} new jobs!", new_jobs.len());
                 
-                let subject = format!("New Job Offers Found! ({} new)", new_jobs.len());
-                let mut body = format!("Hi,\n\nHere are the new job offers found by Alternance Finder:\n\n");
-                for (i, job) in new_jobs.iter().enumerate() {
-                    body.push_str(&format!(
-                        "{}. {} at {}\n   Location: {}\n   Source: {}\n   Date Announced: {}\n   URL: {}\n\n",
-                        i + 1, job.title, job.company, job.location, job.source, job.age_label, job.url
-                    ));
-                }
-                body.push_str("Good luck!");
+                if !recipient_email.trim().is_empty() {
+                    let subject = format!("New Job Offers Found! ({} new)", new_jobs.len());
+                    let mut body = format!("Hi,\n\nHere are the new job offers found by Alternance Finder:\n\n");
+                    for (i, job) in new_jobs.iter().enumerate() {
+                        body.push_str(&format!(
+                            "{}. {} at {}\n   Location: {}\n   Source: {}\n   Date Announced: {}\n   URL: {}\n\n",
+                            i + 1, job.title, job.company, job.location, job.source, job.age_label, job.url
+                        ));
+                    }
+                    body.push_str("Good luck!");
 
-                if let Err(e) = create_mail_draft(&recipient_email, &subject, &body) {
-                    eprintln!("Tauri background: Failed to create mail draft: {}", e);
+                    if let Err(e) = create_mail_draft(&recipient_email, &subject, &body) {
+                        eprintln!("Tauri background: Failed to create mail draft: {}", e);
+                    } else {
+                        println!("Tauri background: Successfully drafted email to {}", recipient_email);
+                    }
                 } else {
-                    println!("Tauri background: Successfully drafted email to {}", recipient_email);
+                    println!("Tauri background: No recipient email configured, skipping auto email draft.");
                 }
 
                 // Emit event to frontend
@@ -477,95 +524,92 @@ async fn run_background_scheduler(app: tauri::AppHandle) {
     }
 }
 
-// 7b. Command to extract skills from a CV byte buffer
+// 7b. Command to extract skills from a CV byte buffer using strict word-boundary regexes
 #[tauri::command]
 fn parse_cv_bytes(bytes: Vec<u8>) -> Result<Vec<String>, String> {
     let text = pdf_extract::extract_text_from_mem(&bytes)
         .map_err(|e| format!("Failed to extract text from PDF: {}", e))?;
     
-    let text_normalized = text.to_lowercase()
-        .replace('\r', " ")
-        .replace('\n', " ")
-        .replace('\t', " ");
+    let text_clean = format!(" {} ", text.replace('\r', " ").replace('\n', " ").replace('\t', " "));
     
-    let skills_mapping = vec![
-        // Tech & Software
-        ("react", "React"),
-        ("nextjs", "Next.js"),
-        ("next.js", "Next.js"),
-        ("vue", "Vue.js"),
-        ("angular", "Angular"),
-        ("javascript", "JavaScript"),
-        ("typescript", "TypeScript"),
-        ("node", "Node.js"),
-        ("python", "Python"),
-        ("rust", "Rust"),
-        ("docker", "Docker"),
-        ("kubernetes", "Kubernetes"),
-        ("aws", "AWS"),
-        ("gcp", "Google Cloud"),
-        ("azure", "Azure"),
-        ("sql", "SQL"),
-        ("postgres", "PostgreSQL"),
-        ("mongodb", "MongoDB"),
-        ("devops", "DevOps"),
-        ("git", "Git"),
-        ("c++", "C++"),
-        ("java", "Java"),
-        ("php", "PHP"),
-        ("backend", "Backend Developer"),
-        ("frontend", "Frontend Developer"),
-        ("fullstack", "Fullstack Developer"),
-        ("full stack", "Fullstack Developer"),
-        ("développeur", "Développeur"),
-        ("developpeur", "Développeur"),
-        ("software engineer", "Software Engineer"),
-        ("data", "Data Analyst"),
-        ("cybersecurite", "Cybersécurité"),
-        
-        // Sales & Business Development
-        ("commercial", "Commercial"),
-        ("business developer", "Business Developer"),
-        ("business development", "Business Development"),
-        ("account manager", "Account Manager"),
-        ("account executive", "Account Executive"),
-        ("sales", "Sales"),
-        ("prospection", "Prospection"),
-        ("négociation", "Négociation"),
-        ("negociation", "Négociation"),
-        ("crm", "CRM"),
-        ("hubspot", "HubSpot"),
-        ("salesforce", "Salesforce"),
-        
-        // Marketing & Communication
-        ("marketing", "Marketing"),
-        ("growth", "Growth Hacking"),
-        ("community manager", "Community Manager"),
-        ("seo", "SEO"),
-        ("sem", "SEM"),
-        ("communication", "Communication"),
-        
+    // Skill patterns with strict boundaries to prevent false substring matches
+    // (e.g. "aujourd'hui" matching "ui", "digital" matching "git", "en vue de" matching "vue")
+    let patterns: Vec<(&str, &str)> = vec![
+        // Languages & Core Runtimes
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])react(?:native)?(?:\.js|js)?(?:$|[^a-zA-Z0-9_+#])", "React"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])next(?:\.js|js)(?:$|[^a-zA-Z0-9_+#])", "Next.js"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:vue(?:\.js|js)|vue\s*[23])(?:$|[^a-zA-Z0-9_+#])", "Vue.js"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])angular(?:$|[^a-zA-Z0-9_+#])", "Angular"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])svelte(?:kit)?(?:$|[^a-zA-Z0-9_+#])", "Svelte"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:javascript|\bjs\b)(?:$|[^a-zA-Z0-9_+#])", "JavaScript"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:typescript|\bts\b)(?:$|[^a-zA-Z0-9_+#])", "TypeScript"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])node(?:\.js|js)?(?:$|[^a-zA-Z0-9_+#])", "Node.js"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])express(?:\.js|js)?(?:$|[^a-zA-Z0-9_+#])", "Express"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])nest(?:\.js|js)(?:$|[^a-zA-Z0-9_+#])", "NestJS"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])python(?:$|[^a-zA-Z0-9_+#])", "Python"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])django(?:$|[^a-zA-Z0-9_+#])", "Django"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])fastapi(?:$|[^a-zA-Z0-9_+#])", "FastAPI"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])flask(?:$|[^a-zA-Z0-9_+#])", "Flask"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])java(?:$|[^a-zA-Z0-9_+#])", "Java"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])spring(?:\s*boot)?(?:$|[^a-zA-Z0-9_+#])", "Spring Boot"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])c\+\+(?:$|[^a-zA-Z0-9_+#])", "C++"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])c#(?:$|[^a-zA-Z0-9_+#])", "C#"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])\.net(?:$|[^a-zA-Z0-9_+#])", ".NET"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])php(?:$|[^a-zA-Z0-9_+#])", "PHP"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])laravel(?:$|[^a-zA-Z0-9_+#])", "Laravel"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])symfony(?:$|[^a-zA-Z0-9_+#])", "Symfony"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])rust(?:$|[^a-zA-Z0-9_+#])", "Rust"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:golang|go\s*lang)(?:$|[^a-zA-Z0-9_+#])", "Go"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])tailwind(?:css)?(?:$|[^a-zA-Z0-9_+#])", "Tailwind CSS"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:html5?|css3?)(?:$|[^a-zA-Z0-9_+#])", "HTML/CSS"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])graphql(?:$|[^a-zA-Z0-9_+#])", "GraphQL"),
+
+        // Infrastructure, DB & DevOps
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])docker(?:$|[^a-zA-Z0-9_+#])", "Docker"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:kubernetes|k8s)(?:$|[^a-zA-Z0-9_+#])", "Kubernetes"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])aws(?:$|[^a-zA-Z0-9_+#])", "AWS"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:gcp|google\s*cloud)(?:$|[^a-zA-Z0-9_+#])", "Google Cloud"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])azure(?:$|[^a-zA-Z0-9_+#])", "Azure"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])sql(?:$|[^a-zA-Z0-9_+#])", "SQL"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])postgres(?:ql)?(?:$|[^a-zA-Z0-9_+#])", "PostgreSQL"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])mysql(?:$|[^a-zA-Z0-9_+#])", "MySQL"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])mongo(?:db)?(?:$|[^a-zA-Z0-9_+#])", "MongoDB"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])redis(?:$|[^a-zA-Z0-9_+#])", "Redis"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])git(?:$|[^a-zA-Z0-9_+#])", "Git"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:ci/cd|ci-cd|gitlab\s*ci|github\s*actions)(?:$|[^a-zA-Z0-9_+#])", "CI/CD"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])linux(?:$|[^a-zA-Z0-9_+#])", "Linux"),
+
+        // Engineering Roles & Specializations
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:fullstack|full\s*stack)(?:$|[^a-zA-Z0-9_+#])", "Fullstack Developer"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:frontend|front\s*end)(?:$|[^a-zA-Z0-9_+#])", "Frontend Developer"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:backend|back\s*end)(?:$|[^a-zA-Z0-9_+#])", "Backend Developer"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:devops|dev\s*ops)(?:$|[^a-zA-Z0-9_+#])", "DevOps"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:data\s*analyst|analyste\s*(?:de\s*)?donn[ée]es)(?:$|[^a-zA-Z0-9_+#])", "Data Analyst"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:data\s*engineer|ing[ée]nieur\s*(?:de\s*)?donn[ée]es)(?:$|[^a-zA-Z0-9_+#])", "Data Engineer"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:data\s*scientist|data\s*science)(?:$|[^a-zA-Z0-9_+#])", "Data Scientist"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:machine\s*learning|\bml\b|ia\b|intelligence\s*artificielle)(?:$|[^a-zA-Z0-9_+#])", "Machine Learning"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:software\s*engineer|ing[ée]nieur\s*(?:d['’]études\s*et\s*)?d[ée]veloppement|ing[ée]nieur\s*logiciel)(?:$|[^a-zA-Z0-9_+#])", "Software Engineer"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:cybers[ée]curit[ée]|cybersecurity|pentest(?:ing)?)(?:$|[^a-zA-Z0-9_+#])", "Cybersécurité"),
+
         // Design & Product
-        ("ux", "UX Design"),
-        ("ui", "UI Design"),
-        ("figma", "Figma"),
-        ("product manager", "Product Manager"),
-        ("product owner", "Product Owner"),
-        
-        // Finance & Management
-        ("comptabilité", "Comptabilité"),
-        ("comptable", "Comptable"),
-        ("finance", "Finance"),
-        ("gestion", "Gestion de Projet"),
-        ("management", "Management"),
-        ("ressources humaines", "Ressources Humaines"),
-        ("recrutement", "Recrutement")
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:ui/ux|ui\s*design(?:er)?|user\s*interface)(?:$|[^a-zA-Z0-9_+#])", "UI Design"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:ui/ux|ux\s*design(?:er)?|user\s*experience)(?:$|[^a-zA-Z0-9_+#])", "UX Design"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])figma(?:$|[^a-zA-Z0-9_+#])", "Figma"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:product\s*owner|product\s*manager|\bpo\b|\bpm\b)(?:$|[^a-zA-Z0-9_+#])", "Product Owner"),
+
+        // Business, Sales & Marketing
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:business\s*developer|account\s*manager|commercial\b|prospection\s*(?:b2b|b2c)?)(?:$|[^a-zA-Z0-9_+#])", "Business Developer"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:hubspot|salesforce|\bcrm\b)(?:$|[^a-zA-Z0-9_+#])", "CRM"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:marketing\s*digital|growth\s*hacking|community\s*manager)(?:$|[^a-zA-Z0-9_+#])", "Marketing"),
+        (r"(?i)(?:^|[^a-zA-Z0-9_+#])(?:\bseo\b|\bsea\b|search\s*engine)(?:$|[^a-zA-Z0-9_+#])", "SEO"),
     ];
     
     let mut found_skills = std::collections::BTreeSet::new();
-    for (key, val) in skills_mapping {
-        if text_normalized.contains(key) {
-            found_skills.insert(val.to_string());
+    for (regex_str, val) in patterns {
+        if let Ok(re) = Regex::new(regex_str) {
+            if re.is_match(&text_clean) {
+                found_skills.insert(val.to_string());
+            }
         }
     }
     
