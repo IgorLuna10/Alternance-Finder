@@ -151,6 +151,16 @@ function App() {
   const excludedModalRef = useRef(null);
   const lastActiveElementRef = useRef(null);
 
+  // User name & greeting state
+  const [userName, setUserName] = useState(() => {
+    try {
+      return localStorage.getItem("userName") || "";
+    } catch {
+      return "";
+    }
+  });
+  const nameInputRef = useRef(null);
+
   // CV & Skills state
   const [cvSkills, setCvSkills] = useState(() => {
     try {
@@ -206,6 +216,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem("ignoreList", JSON.stringify(ignoreList));
   }, [ignoreList]);
+
+  useEffect(() => {
+    localStorage.setItem("userName", userName);
+  }, [userName]);
 
   // Global keydown handler for Esc & Return
   useEffect(() => {
@@ -284,6 +298,7 @@ function App() {
       try {
         const settings = await invoke("get_settings");
         if (settings) {
+          if (settings.user_name && !userName) setUserName(settings.user_name);
           if (settings.auto_scrape) setAutoScrape(settings.auto_scrape === "true");
           if (settings.scrape_interval_hours) setScrapeInterval(settings.scrape_interval_hours);
           if (settings.recipient_email) setRecipientEmail(settings.recipient_email);
@@ -344,6 +359,7 @@ function App() {
       try {
         await invoke("save_settings", {
           settings: {
+            user_name: userName,
             auto_scrape: autoScrape ? "true" : "false",
             scrape_interval_hours: scrapeInterval.toString(),
             recipient_email: recipientEmail,
@@ -363,7 +379,7 @@ function App() {
     }, 600);
 
     return () => clearTimeout(timer);
-  }, [keywords, location, maxAge, recipientEmail, autoScrape, scrapeInterval, contractType, ignoreList, isLoaded]);
+  }, [keywords, location, maxAge, recipientEmail, autoScrape, scrapeInterval, contractType, ignoreList, userName, isLoaded]);
 
   const fetchSavedJobs = async () => {
     try {
@@ -501,6 +517,17 @@ function App() {
     setOpenMenuJobUrl(null);
   };
 
+  const guessNameFromFilename = (filename) => {
+    if (!filename) return null;
+    const clean = filename.replace(/\.pdf$/i, "").replace(/[_\-\.]+/g, " ");
+    const tokens = clean.split(/\s+/).filter(t => !/^(cv|resume|curriculum|vitae|alternance|finder|developpeur|dev|profile)$/i.test(t));
+    if (tokens.length > 0 && /^[a-zA-ZÀ-ÿ]+$/.test(tokens[0])) {
+      const raw = tokens[0];
+      return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+    }
+    return null;
+  };
+
   const handleCvUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -512,15 +539,23 @@ function App() {
     try {
       const arrayBuffer = await file.arrayBuffer();
       const bytes = new Uint8Array(arrayBuffer);
-      const extractedSkills = await invoke("parse_cv_bytes", { bytes });
+      const result = await invoke("parse_cv_bytes", { bytes });
       
+      const extractedSkills = Array.isArray(result) ? result : (result.skills || []);
+      const extractedFirstName = (!Array.isArray(result) && result.first_name) ? result.first_name : guessNameFromFilename(file.name);
+
+      if (extractedFirstName && !userName) {
+        setUserName(extractedFirstName);
+      }
+
       setCvSkills(extractedSkills);
       setLastExtractedSkills(extractedSkills);
       setSelectedPresetId(null);
+      const candidateDisplayName = extractedFirstName || userName;
       if (extractedSkills.length > 0) {
-        setStatusMessage(`CV Parsed. Found ${extractedSkills.length} skills.`);
+        setStatusMessage(candidateDisplayName ? `CV parsed for ${candidateDisplayName}. Found ${extractedSkills.length} skills.` : `CV parsed. Found ${extractedSkills.length} skills.`);
       } else {
-        setStatusMessage("CV Parsed, but no matching skills found. Pick a preset or add manually.");
+        setStatusMessage("CV parsed, but no matching skills found. Pick a preset or add manually.");
       }
     } catch (error) {
       console.error("Error parsing CV:", error);
@@ -828,7 +863,16 @@ function App() {
       {/* Title Bar */}
       <header className="macos-titlebar">
         <div className="titlebar-left">
-          <span className="app-title">Alternance Finder</span>
+          <button 
+            className="titlebar-greeting-btn"
+            onClick={() => nameInputRef.current?.focus()}
+            title="Click to edit your first name in profile"
+            aria-label="Candidate greeting"
+          >
+            <span className="app-title">
+              {userName.trim() ? `Hi ${userName.trim()}` : "Hi there"}
+            </span>
+          </button>
         </div>
         <div className="titlebar-right">
           <button 
@@ -912,6 +956,23 @@ function App() {
           <div className="grouped-section">
             <span className="section-label">Profile</span>
             <div className="grouped-list">
+              {/* Name Row */}
+              <div className="grouped-row">
+                <span className="row-label">Name</span>
+                <div className="row-content-right" style={{ flex: 1, justifyContent: "flex-end" }}>
+                  <input 
+                    ref={nameInputRef}
+                    type="text" 
+                    value={userName} 
+                    onChange={(e) => setUserName(e.target.value)} 
+                    placeholder="First name"
+                    className="mac-inline-input"
+                    aria-label="Candidate first name"
+                    maxLength={30}
+                  />
+                </div>
+              </div>
+
               {/* CV Row */}
               <div 
                 className="grouped-row grouped-row-clickable" 

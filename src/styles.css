@@ -140,7 +140,7 @@ input, button, select, textarea {
 }
 
 /* Tabular numbers for clean numeric alignments */
-.font-numeric, .offer-badge-match, .offer-date, .feed-count-secondary, .version-pill {
+.font-numeric, .offer-badge-match, .offer-date, .feed-count-secondary {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
@@ -188,15 +188,46 @@ input, button, select, textarea {
   letter-spacing: -0.01em;
 }
 
-.version-pill {
-  font-size: 12px;
-  line-height: 16px;
-  font-weight: 500;
-  padding: var(--spacing-25) var(--spacing-75);
-  border-radius: var(--radius-full);
-  background: var(--accent-subtle);
+.titlebar-greeting-btn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-xs);
+  transition: opacity 0.15s ease;
+  text-align: left;
+}
+
+.titlebar-greeting-btn:hover .app-title {
   color: var(--accent);
-  border: 1px solid var(--accent-border);
+}
+
+.mac-inline-input {
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--text-primary);
+  text-align: right;
+  width: 100%;
+  max-width: 140px;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  outline: none;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.mac-inline-input::placeholder {
+  color: var(--text-placeholder);
+}
+
+.mac-inline-input:focus {
+  background: var(--surface-floating);
+  box-shadow: 0 0 0 1px var(--border-focus);
 }
 
 .titlebar-right {

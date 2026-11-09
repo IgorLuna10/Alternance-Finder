@@ -54,6 +54,7 @@ fn init_db(app: &tauri::AppHandle) -> SqlResult<Connection> {
     )?;
 
     // Insert default settings if they don't exist (no hardcoded PII)
+    conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('user_name', '')", ())?;
     conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('auto_scrape', 'false')", ())?;
     conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('scrape_interval_hours', '4')", ())?;
     conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('recipient_email', '')", ())?;
@@ -524,12 +525,84 @@ async fn run_background_scheduler(app: tauri::AppHandle) {
     }
 }
 
-// 7b. Command to extract skills from a CV byte buffer using strict word-boundary regexes
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct CvParseResult {
+    pub skills: Vec<String>,
+    pub first_name: Option<String>,
+}
+
+fn capitalize_name_token(token: &str) -> String {
+    token
+        .split('-')
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => format!("{}{}", first.to_uppercase(), chars.as_str().to_lowercase()),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+fn extract_candidate_first_name(raw_text: &str) -> Option<String> {
+    let lines: Vec<&str> = raw_text
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    for line in lines.iter().take(8) {
+        let lower = line.to_lowercase();
+        // Skip common header/contact markers
+        if lower.contains('@')
+            || lower.contains("http")
+            || lower.contains("www")
+            || lower.contains("curriculum")
+            || lower.contains("vitae")
+            || lower.contains("téléphone")
+            || lower.contains("telephone")
+            || lower.contains("phone")
+            || lower.contains("contact")
+            || lower.contains("profil")
+            || lower.contains("profile")
+            || lower.contains("expérience")
+            || lower.contains("formation")
+            || lower.contains("dév")
+            || lower.contains("ingénie")
+            || lower.contains("stage")
+            || lower.contains("alternan")
+            || lower.contains("candidat")
+            || lower.starts_with('+')
+            || lower.starts_with("06")
+            || lower.starts_with("07")
+        {
+            continue;
+        }
+
+        let tokens: Vec<&str> = line.split_whitespace().collect();
+        if tokens.len() >= 2 && tokens.len() <= 4 {
+            let is_name_like = tokens.iter().all(|t| {
+                t.chars().all(|c| c.is_alphabetic() || c == '-')
+            });
+            if is_name_like {
+                let first_token = tokens[0];
+                if first_token.len() >= 2 {
+                    return Some(capitalize_name_token(first_token));
+                }
+            }
+        }
+    }
+    None
+}
+
+// 7b. Command to extract skills and candidate first name from a CV byte buffer
 #[tauri::command]
-fn parse_cv_bytes(bytes: Vec<u8>) -> Result<Vec<String>, String> {
+fn parse_cv_bytes(bytes: Vec<u8>) -> Result<CvParseResult, String> {
     let text = pdf_extract::extract_text_from_mem(&bytes)
         .map_err(|e| format!("Failed to extract text from PDF: {}", e))?;
     
+    let first_name = extract_candidate_first_name(&text);
     let text_clean = format!(" {} ", text.replace('\r', " ").replace('\n', " ").replace('\t', " "));
     
     // Skill patterns with strict boundaries to prevent false substring matches
@@ -613,7 +686,10 @@ fn parse_cv_bytes(bytes: Vec<u8>) -> Result<Vec<String>, String> {
         }
     }
     
-    Ok(found_skills.into_iter().collect())
+    Ok(CvParseResult {
+        skills: found_skills.into_iter().collect(),
+        first_name,
+    })
 }
 
 // 8. App Initialization
