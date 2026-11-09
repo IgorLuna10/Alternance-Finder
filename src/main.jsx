@@ -829,7 +829,6 @@ function App() {
       <header className="macos-titlebar">
         <div className="titlebar-left">
           <span className="app-title">Alternance Finder</span>
-          <span className="version-pill">v1.2</span>
         </div>
         <div className="titlebar-right">
           <button 
