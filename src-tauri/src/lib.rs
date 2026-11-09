@@ -528,6 +528,7 @@ async fn run_background_scheduler(app: tauri::AppHandle) {
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct CvParseResult {
     pub skills: Vec<String>,
+    pub candidate_name: Option<String>,
     pub first_name: Option<String>,
 }
 
@@ -545,7 +546,7 @@ fn capitalize_name_token(token: &str) -> String {
         .join("-")
 }
 
-fn extract_candidate_first_name(raw_text: &str) -> Option<String> {
+fn extract_candidate_name(raw_text: &str) -> (Option<String>, Option<String>) {
     let lines: Vec<&str> = raw_text
         .lines()
         .map(|l| l.trim())
@@ -588,19 +589,23 @@ fn extract_candidate_first_name(raw_text: &str) -> Option<String> {
                     let second_is_caps = tokens[1].len() >= 2 && tokens[1].chars().all(|c| c.is_uppercase() || c == '-');
                     
                     if first_is_caps && !second_is_caps {
-                        // "LUNA Igor" -> First name is tokens[1]
-                        return Some(capitalize_name_token(tokens[1]));
+                        // "LUNA Igor" -> First name: Igor, Full name: Igor Luna
+                        let first = capitalize_name_token(tokens[1]);
+                        let last = capitalize_name_token(tokens[0]);
+                        return (Some(format!("{} {}", first, last)), Some(first));
                     } else if !first_is_caps && second_is_caps {
-                        // "Igor LUNA" -> First name is tokens[0]
-                        return Some(capitalize_name_token(tokens[0]));
+                        // "Igor LUNA" -> First name: Igor, Full name: Igor Luna
+                        let first = capitalize_name_token(tokens[0]);
+                        let last = capitalize_name_token(tokens[1]);
+                        return (Some(format!("{} {}", first, last)), Some(first));
                     }
                 }
 
-                // Default: first token is first name ("Igor Luna" or "IGOR LUNA")
-                let candidate = tokens[0];
-                if candidate.len() >= 2 {
-                    return Some(capitalize_name_token(candidate));
-                }
+                // Default: capitalize all tokens
+                let capitalized_tokens: Vec<String> = tokens.iter().map(|&t| capitalize_name_token(t)).collect();
+                let full = capitalized_tokens.join(" ");
+                let first = capitalized_tokens.first().cloned();
+                return (Some(full), first);
             }
         }
     }
@@ -621,27 +626,29 @@ fn extract_candidate_first_name(raw_text: &str) -> Option<String> {
                     let w1_caps = w1.chars().all(|c| c.is_uppercase() || c == '-');
                     let w2_caps = w2.chars().all(|c| c.is_uppercase() || c == '-');
                     if w1_caps && !w2_caps {
-                        // Line 1: LUNA, Line 2: Igor -> Igor
-                        return Some(capitalize_name_token(w2));
+                        let first = capitalize_name_token(w2);
+                        let last = capitalize_name_token(w1);
+                        return (Some(format!("{} {}", first, last)), Some(first));
                     } else {
-                        // Line 1: Igor, Line 2: Luna -> Igor
-                        return Some(capitalize_name_token(w1));
+                        let first = capitalize_name_token(w1);
+                        let last = capitalize_name_token(w2);
+                        return (Some(format!("{} {}", first, last)), Some(first));
                     }
                 }
             }
         }
     }
 
-    None
+    (None, None)
 }
 
-// 7b. Command to extract skills and candidate first name from a CV byte buffer
+// 7b. Command to extract skills and candidate name from a CV byte buffer
 #[tauri::command]
 fn parse_cv_bytes(bytes: Vec<u8>) -> Result<CvParseResult, String> {
     let text = pdf_extract::extract_text_from_mem(&bytes)
         .map_err(|e| format!("Failed to extract text from PDF: {}", e))?;
     
-    let first_name = extract_candidate_first_name(&text);
+    let (candidate_name, first_name) = extract_candidate_name(&text);
     let text_clean = format!(" {} ", text.replace('\r', " ").replace('\n', " ").replace('\t', " "));
     
     // Skill patterns with strict boundaries to prevent false substring matches
@@ -727,6 +734,7 @@ fn parse_cv_bytes(bytes: Vec<u8>) -> Result<CvParseResult, String> {
     
     Ok(CvParseResult {
         skills: found_skills.into_iter().collect(),
+        candidate_name,
         first_name,
     })
 }
@@ -772,11 +780,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_extract_candidate_first_name() {
-        assert_eq!(extract_candidate_first_name("Igor Luna\nDéveloppeur Fullstack\nParis"), Some("Igor".to_string()));
-        assert_eq!(extract_candidate_first_name("LUNA Igor\nDéveloppeur Fullstack"), Some("Igor".to_string()));
-        assert_eq!(extract_candidate_first_name("IGOR LUNA\nDéveloppeur Web"), Some("Igor".to_string()));
-        assert_eq!(extract_candidate_first_name("Jean-Pierre Dupont\nIngénieur"), Some("Jean-Pierre".to_string()));
-        assert_eq!(extract_candidate_first_name("Curriculum Vitae\nIgor\nLuna\nParis"), Some("Igor".to_string()));
+    fn test_extract_candidate_name() {
+        assert_eq!(extract_candidate_name("Igor Luna\nDéveloppeur Fullstack\nParis"), (Some("Igor Luna".to_string()), Some("Igor".to_string())));
+        assert_eq!(extract_candidate_name("LUNA Igor\nDéveloppeur Fullstack"), (Some("Igor Luna".to_string()), Some("Igor".to_string())));
+        assert_eq!(extract_candidate_name("IGOR LUNA\nDéveloppeur Web"), (Some("Igor Luna".to_string()), Some("Igor".to_string())));
+        assert_eq!(extract_candidate_name("Jean-Pierre Dupont\nIngénieur"), (Some("Jean-Pierre Dupont".to_string()), Some("Jean-Pierre".to_string())));
+        assert_eq!(extract_candidate_name("Curriculum Vitae\nIgor\nLuna\nParis"), (Some("Igor Luna".to_string()), Some("Igor".to_string())));
     }
 }

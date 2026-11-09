@@ -522,9 +522,12 @@ function App() {
     if (!filename) return null;
     const clean = filename.replace(/\.pdf$/i, "").replace(/[_\-\.]+/g, " ");
     const tokens = clean.split(/\s+/).filter(t => !/^(cv|resume|curriculum|vitae|alternance|finder|developpeur|dev|profile)$/i.test(t));
-    if (tokens.length > 0 && /^[a-zA-ZÀ-ÿ]+$/.test(tokens[0])) {
-      const raw = tokens[0];
-      return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+    if (tokens.length >= 2 && /^[a-zA-ZÀ-ÿ]+$/.test(tokens[0]) && /^[a-zA-ZÀ-ÿ]+$/.test(tokens[1])) {
+      const first = tokens[0].charAt(0).toUpperCase() + tokens[0].slice(1).toLowerCase();
+      const last = tokens[1].charAt(0).toUpperCase() + tokens[1].slice(1).toLowerCase();
+      return `${first} ${last}`;
+    } else if (tokens.length === 1 && /^[a-zA-ZÀ-ÿ]+$/.test(tokens[0])) {
+      return tokens[0].charAt(0).toUpperCase() + tokens[0].slice(1).toLowerCase();
     }
     return null;
   };
@@ -543,7 +546,9 @@ function App() {
       const result = await invoke("parse_cv_bytes", { bytes });
       
       const extractedSkills = Array.isArray(result) ? result : (result.skills || []);
-      const detectedName = (!Array.isArray(result) && result.first_name) ? result.first_name : guessNameFromFilename(file.name);
+      const detectedName = (!Array.isArray(result) && (result.candidate_name || result.first_name))
+        ? (result.candidate_name || result.first_name)
+        : guessNameFromFilename(file.name);
 
       if (detectedName) {
         setCvCandidateName(detectedName);
@@ -867,9 +872,20 @@ function App() {
       {/* Title Bar */}
       <header className="macos-titlebar">
         <div className="titlebar-left">
-          <span className="app-title">
-            {cvCandidateName ? `Hi ${cvCandidateName}` : "Alternance Finder"}
-          </span>
+          <span className="app-title">AlternanceFinder</span>
+          {cvCandidateName && (
+            <>
+              <span className="titlebar-divider">/</span>
+              <span className="titlebar-candidate" title={`Candidate: ${cvCandidateName}`}>
+                {cvCandidateName}
+              </span>
+            </>
+          )}
+          <span className="titlebar-divider">•</span>
+          <div className="titlebar-sync-indicator" title={`${jobs.length} offers loaded in local database`}>
+            <span className={`sync-status-dot ${loading ? 'sync-status-dot-pulse' : ''}`} />
+            <span>{loading ? "Syncing..." : `${jobs.length} offer${jobs.length === 1 ? '' : 's'} synced`}</span>
+          </div>
         </div>
         <div className="titlebar-right">
           <button 

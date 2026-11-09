@@ -178,20 +178,71 @@ input, button, select, textarea {
   display: flex;
   align-items: center;
   gap: var(--spacing-100);
+  min-width: 0;
 }
 
 .app-title {
-  font-size: 14px;
+  font-size: 13px;
   line-height: 20px;
   font-weight: 600;
   color: var(--text-primary);
   letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.titlebar-divider {
+  color: var(--border-strong);
+  font-size: 12px;
+  font-weight: 400;
+  user-select: none;
+}
+
+.titlebar-candidate {
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.titlebar-sync-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.sync-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: #10B981;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.sync-status-dot-pulse {
+  background: var(--accent);
+  animation: pulse-dot 1.2s infinite ease-in-out;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.85); }
 }
 
 .titlebar-right {
   display: flex;
   align-items: center;
   gap: var(--spacing-75);
+  flex-shrink: 0;
 }
 
 /* ==========================================================================
