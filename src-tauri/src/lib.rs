@@ -552,47 +552,86 @@ fn extract_candidate_first_name(raw_text: &str) -> Option<String> {
         .filter(|l| !l.is_empty())
         .collect();
 
-    for line in lines.iter().take(8) {
-        let lower = line.to_lowercase();
-        // Skip common header/contact markers
-        if lower.contains('@')
-            || lower.contains("http")
-            || lower.contains("www")
-            || lower.contains("curriculum")
-            || lower.contains("vitae")
-            || lower.contains("téléphone")
-            || lower.contains("telephone")
-            || lower.contains("phone")
-            || lower.contains("contact")
-            || lower.contains("profil")
-            || lower.contains("profile")
-            || lower.contains("expérience")
-            || lower.contains("formation")
-            || lower.contains("dév")
-            || lower.contains("ingénie")
-            || lower.contains("stage")
-            || lower.contains("alternan")
-            || lower.contains("candidat")
-            || lower.starts_with('+')
-            || lower.starts_with("06")
-            || lower.starts_with("07")
-        {
+    let blacklist = [
+        "@", "http", "www", "curriculum", "vitae", "téléphone", "telephone", "phone", "tel:",
+        "contact", "profil", "profile", "expérience", "experience", "formation", "education",
+        "dév", "dev", "ingénie", "engineer", "stage", "alternan", "candidat", "permis",
+        "bordeaux", "paris", "lyon", "france", "adresse", "address", "ville", "city",
+        "disponible", "disponibilité", "recherche", "objectif", "résumé", "resume",
+        "summary", "about", "compétences", "skills", "projets", "projects", "langues",
+        "languages", "centres d'intérêt", "hobbies", "loisirs"
+    ];
+
+    let is_blacklisted = |s: &str| -> bool {
+        let l = s.to_lowercase();
+        if l.starts_with('+') || l.starts_with("06") || l.starts_with("07") || l.starts_with("01") {
+            return true;
+        }
+        blacklist.iter().any(|&b| l.contains(b))
+    };
+
+    // 1. Check for single-line name in first 12 lines
+    for line in lines.iter().take(12) {
+        if is_blacklisted(line) {
             continue;
         }
 
         let tokens: Vec<&str> = line.split_whitespace().collect();
         if tokens.len() >= 2 && tokens.len() <= 4 {
-            let is_name_like = tokens.iter().all(|t| {
+            let is_all_alpha = tokens.iter().all(|t| {
                 t.chars().all(|c| c.is_alphabetic() || c == '-')
             });
-            if is_name_like {
-                let first_token = tokens[0];
-                if first_token.len() >= 2 {
-                    return Some(capitalize_name_token(first_token));
+            if is_all_alpha {
+                // Check if one token is in ALL-CAPS (e.g., "LUNA Igor" or "Igor LUNA")
+                if tokens.len() == 2 {
+                    let first_is_caps = tokens[0].len() >= 2 && tokens[0].chars().all(|c| c.is_uppercase() || c == '-');
+                    let second_is_caps = tokens[1].len() >= 2 && tokens[1].chars().all(|c| c.is_uppercase() || c == '-');
+                    
+                    if first_is_caps && !second_is_caps {
+                        // "LUNA Igor" -> First name is tokens[1]
+                        return Some(capitalize_name_token(tokens[1]));
+                    } else if !first_is_caps && second_is_caps {
+                        // "Igor LUNA" -> First name is tokens[0]
+                        return Some(capitalize_name_token(tokens[0]));
+                    }
+                }
+
+                // Default: first token is first name ("Igor Luna" or "IGOR LUNA")
+                let candidate = tokens[0];
+                if candidate.len() >= 2 {
+                    return Some(capitalize_name_token(candidate));
                 }
             }
         }
     }
+
+    // 2. Check for two consecutive 1-word lines (e.g. Line 1: "Igor", Line 2: "Luna")
+    for i in 0..lines.len().min(8).saturating_sub(1) {
+        let l1 = lines[i];
+        let l2 = lines[i + 1];
+        if !is_blacklisted(l1) && !is_blacklisted(l2) {
+            let t1: Vec<&str> = l1.split_whitespace().collect();
+            let t2: Vec<&str> = l2.split_whitespace().collect();
+            if t1.len() == 1 && t2.len() == 1 {
+                let w1 = t1[0];
+                let w2 = t2[0];
+                let w1_alpha = w1.len() >= 2 && w1.chars().all(|c| c.is_alphabetic() || c == '-');
+                let w2_alpha = w2.len() >= 2 && w2.chars().all(|c| c.is_alphabetic() || c == '-');
+                if w1_alpha && w2_alpha {
+                    let w1_caps = w1.chars().all(|c| c.is_uppercase() || c == '-');
+                    let w2_caps = w2.chars().all(|c| c.is_uppercase() || c == '-');
+                    if w1_caps && !w2_caps {
+                        // Line 1: LUNA, Line 2: Igor -> Igor
+                        return Some(capitalize_name_token(w2));
+                    } else {
+                        // Line 1: Igor, Line 2: Luna -> Igor
+                        return Some(capitalize_name_token(w1));
+                    }
+                }
+            }
+        }
+    }
+
     None
 }
 
@@ -726,4 +765,18 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_candidate_first_name() {
+        assert_eq!(extract_candidate_first_name("Igor Luna\nDéveloppeur Fullstack\nParis"), Some("Igor".to_string()));
+        assert_eq!(extract_candidate_first_name("LUNA Igor\nDéveloppeur Fullstack"), Some("Igor".to_string()));
+        assert_eq!(extract_candidate_first_name("IGOR LUNA\nDéveloppeur Web"), Some("Igor".to_string()));
+        assert_eq!(extract_candidate_first_name("Jean-Pierre Dupont\nIngénieur"), Some("Jean-Pierre".to_string()));
+        assert_eq!(extract_candidate_first_name("Curriculum Vitae\nIgor\nLuna\nParis"), Some("Igor".to_string()));
+    }
 }

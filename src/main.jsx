@@ -151,15 +151,14 @@ function App() {
   const excludedModalRef = useRef(null);
   const lastActiveElementRef = useRef(null);
 
-  // User name & greeting state
-  const [userName, setUserName] = useState(() => {
+  // Candidate name extracted from CV
+  const [cvCandidateName, setCvCandidateName] = useState(() => {
     try {
-      return localStorage.getItem("userName") || "";
+      return localStorage.getItem("cvCandidateName") || "";
     } catch {
       return "";
     }
   });
-  const nameInputRef = useRef(null);
 
   // CV & Skills state
   const [cvSkills, setCvSkills] = useState(() => {
@@ -218,8 +217,12 @@ function App() {
   }, [ignoreList]);
 
   useEffect(() => {
-    localStorage.setItem("userName", userName);
-  }, [userName]);
+    if (cvCandidateName) {
+      localStorage.setItem("cvCandidateName", cvCandidateName);
+    } else {
+      localStorage.removeItem("cvCandidateName");
+    }
+  }, [cvCandidateName]);
 
   // Global keydown handler for Esc & Return
   useEffect(() => {
@@ -298,7 +301,6 @@ function App() {
       try {
         const settings = await invoke("get_settings");
         if (settings) {
-          if (settings.user_name && !userName) setUserName(settings.user_name);
           if (settings.auto_scrape) setAutoScrape(settings.auto_scrape === "true");
           if (settings.scrape_interval_hours) setScrapeInterval(settings.scrape_interval_hours);
           if (settings.recipient_email) setRecipientEmail(settings.recipient_email);
@@ -359,7 +361,6 @@ function App() {
       try {
         await invoke("save_settings", {
           settings: {
-            user_name: userName,
             auto_scrape: autoScrape ? "true" : "false",
             scrape_interval_hours: scrapeInterval.toString(),
             recipient_email: recipientEmail,
@@ -379,7 +380,7 @@ function App() {
     }, 600);
 
     return () => clearTimeout(timer);
-  }, [keywords, location, maxAge, recipientEmail, autoScrape, scrapeInterval, contractType, ignoreList, userName, isLoaded]);
+  }, [keywords, location, maxAge, recipientEmail, autoScrape, scrapeInterval, contractType, ignoreList, isLoaded]);
 
   const fetchSavedJobs = async () => {
     try {
@@ -542,18 +543,19 @@ function App() {
       const result = await invoke("parse_cv_bytes", { bytes });
       
       const extractedSkills = Array.isArray(result) ? result : (result.skills || []);
-      const extractedFirstName = (!Array.isArray(result) && result.first_name) ? result.first_name : guessNameFromFilename(file.name);
+      const detectedName = (!Array.isArray(result) && result.first_name) ? result.first_name : guessNameFromFilename(file.name);
 
-      if (extractedFirstName && !userName) {
-        setUserName(extractedFirstName);
+      if (detectedName) {
+        setCvCandidateName(detectedName);
       }
 
       setCvSkills(extractedSkills);
       setLastExtractedSkills(extractedSkills);
       setSelectedPresetId(null);
-      const candidateDisplayName = extractedFirstName || userName;
-      if (extractedSkills.length > 0) {
-        setStatusMessage(candidateDisplayName ? `CV parsed for ${candidateDisplayName}. Found ${extractedSkills.length} skills.` : `CV parsed. Found ${extractedSkills.length} skills.`);
+      if (detectedName) {
+        setStatusMessage(`CV parsed for ${detectedName}. Found ${extractedSkills.length} skills.`);
+      } else if (extractedSkills.length > 0) {
+        setStatusMessage(`CV parsed. Found ${extractedSkills.length} skills.`);
       } else {
         setStatusMessage("CV parsed, but no matching skills found. Pick a preset or add manually.");
       }
@@ -584,8 +586,10 @@ function App() {
   const handleRemoveCvFile = (e) => {
     e.stopPropagation();
     setCvFileName("");
+    setCvCandidateName("");
     setLastExtractedSkills([]);
     localStorage.removeItem("cvFileName");
+    localStorage.removeItem("cvCandidateName");
     localStorage.removeItem("lastExtractedSkills");
     setStatusMessage("CV file removed.");
   };
@@ -863,16 +867,9 @@ function App() {
       {/* Title Bar */}
       <header className="macos-titlebar">
         <div className="titlebar-left">
-          <button 
-            className="titlebar-greeting-btn"
-            onClick={() => nameInputRef.current?.focus()}
-            title="Click to edit your first name in profile"
-            aria-label="Candidate greeting"
-          >
-            <span className="app-title">
-              {userName.trim() ? `Hi ${userName.trim()}` : "Hi there"}
-            </span>
-          </button>
+          <span className="app-title">
+            {cvCandidateName ? `Hi ${cvCandidateName}` : "Alternance Finder"}
+          </span>
         </div>
         <div className="titlebar-right">
           <button 
@@ -956,23 +953,6 @@ function App() {
           <div className="grouped-section">
             <span className="section-label">Profile</span>
             <div className="grouped-list">
-              {/* Name Row */}
-              <div className="grouped-row">
-                <span className="row-label">Name</span>
-                <div className="row-content-right" style={{ flex: 1, justifyContent: "flex-end" }}>
-                  <input 
-                    ref={nameInputRef}
-                    type="text" 
-                    value={userName} 
-                    onChange={(e) => setUserName(e.target.value)} 
-                    placeholder="First name"
-                    className="mac-inline-input"
-                    aria-label="Candidate first name"
-                    maxLength={30}
-                  />
-                </div>
-              </div>
-
               {/* CV Row */}
               <div 
                 className="grouped-row grouped-row-clickable" 
